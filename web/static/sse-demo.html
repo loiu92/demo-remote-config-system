@@ -33,6 +33,14 @@
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
+            box-sizing: border-box;
+        }
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+        .form-row .form-group {
+            flex: 1;
         }
         button {
             background: #007bff;
@@ -106,6 +114,10 @@
             background: #ffe6e6;
             border-left: 4px solid #dc3545;
         }
+        .event.info {
+            background: #f8f9fa;
+            border-left: 4px solid #17a2b8;
+        }
         .config-display {
             background: #f8f9fa;
             border: 1px solid #ddd;
@@ -129,19 +141,27 @@
         <h1>Server-Sent Events Demo</h1>
         <p>Connect to real-time configuration updates using Server-Sent Events.</p>
         
-        <div class="form-group">
-            <label for="organization">Organization:</label>
-            <input type="text" id="organization" value="mycompany" placeholder="Enter organization slug">
-        </div>
-        
-        <div class="form-group">
-            <label for="application">Application:</label>
-            <input type="text" id="application" value="webapp" placeholder="Enter application slug">
-        </div>
-        
-        <div class="form-group">
-            <label for="environment">Environment:</label>
-            <input type="text" id="environment" value="prod" placeholder="Enter environment slug">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="organization">Organization:</label>
+                <select id="organization" onchange="loadApplications()">
+                    <option value="">Loading organizations...</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="application">Application:</label>
+                <select id="application" onchange="loadEnvironments()" disabled>
+                    <option value="">Select organization first</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="environment">Environment:</label>
+                <select id="environment" disabled>
+                    <option value="">Select application first</option>
+                </select>
+            </div>
         </div>
         
         <div class="form-group">
@@ -174,6 +194,9 @@
     <script>
         let eventSource = null;
         let currentConfig = null;
+        let organizationsData = [];
+        let applicationsData = [];
+        let environmentsData = [];
 
         function updateStatus(status, message) {
             const statusEl = document.getElementById('status');
@@ -202,6 +225,126 @@
             configEl.innerHTML = `<pre>${JSON.stringify(config, null, 2)}</pre>`;
         }
 
+        // API functions to load data
+        async function loadOrganizations() {
+            try {
+                const response = await fetch('/admin/orgs');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const result = await response.json();
+                organizationsData = result.data || [];
+
+                const orgSelect = document.getElementById('organization');
+                orgSelect.innerHTML = '<option value="">Select organization</option>';
+
+                organizationsData.forEach(org => {
+                    const option = document.createElement('option');
+                    option.value = org.slug;
+                    option.textContent = `${org.name} (${org.slug})`;
+                    orgSelect.appendChild(option);
+                });
+
+                // Set default to myorg if it exists
+                const defaultOrg = organizationsData.find(org => org.slug === 'myorg');
+                if (defaultOrg) {
+                    orgSelect.value = 'myorg';
+                    loadApplications();
+                }
+            } catch (error) {
+                console.error('Failed to load organizations:', error);
+                addEvent('error', { message: `Failed to load organizations: ${error.message}` });
+                document.getElementById('organization').innerHTML = '<option value="">Error loading organizations</option>';
+            }
+        }
+
+        async function loadApplications() {
+            const orgSlug = document.getElementById('organization').value;
+            const appSelect = document.getElementById('application');
+            const envSelect = document.getElementById('environment');
+
+            if (!orgSlug) {
+                appSelect.innerHTML = '<option value="">Select organization first</option>';
+                appSelect.disabled = true;
+                envSelect.innerHTML = '<option value="">Select application first</option>';
+                envSelect.disabled = true;
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/orgs/${orgSlug}/apps`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const result = await response.json();
+                applicationsData = result.data || [];
+
+                appSelect.innerHTML = '<option value="">Select application</option>';
+                applicationsData.forEach(app => {
+                    const option = document.createElement('option');
+                    option.value = app.slug;
+                    option.textContent = `${app.name} (${app.slug})`;
+                    appSelect.appendChild(option);
+                });
+
+                appSelect.disabled = false;
+
+                // Set default to myapp if it exists
+                const defaultApp = applicationsData.find(app => app.slug === 'myapp');
+                if (defaultApp) {
+                    appSelect.value = 'myapp';
+                    loadEnvironments();
+                }
+            } catch (error) {
+                console.error('Failed to load applications:', error);
+                addEvent('error', { message: `Failed to load applications: ${error.message}` });
+                appSelect.innerHTML = '<option value="">Error loading applications</option>';
+                appSelect.disabled = false;
+            }
+        }
+
+        async function loadEnvironments() {
+            const orgSlug = document.getElementById('organization').value;
+            const appSlug = document.getElementById('application').value;
+            const envSelect = document.getElementById('environment');
+
+            if (!orgSlug || !appSlug) {
+                envSelect.innerHTML = '<option value="">Select application first</option>';
+                envSelect.disabled = true;
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/orgs/${orgSlug}/apps/${appSlug}/envs`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const result = await response.json();
+                environmentsData = result.data || [];
+
+                envSelect.innerHTML = '<option value="">Select environment</option>';
+                environmentsData.forEach(env => {
+                    const option = document.createElement('option');
+                    option.value = env.slug;
+                    option.textContent = `${env.name} (${env.slug})`;
+                    envSelect.appendChild(option);
+                });
+
+                envSelect.disabled = false;
+
+                // Set default to dev if it exists
+                const defaultEnv = environmentsData.find(env => env.slug === 'dev');
+                if (defaultEnv) {
+                    envSelect.value = 'dev';
+                }
+            } catch (error) {
+                console.error('Failed to load environments:', error);
+                addEvent('error', { message: `Failed to load environments: ${error.message}` });
+                envSelect.innerHTML = '<option value="">Error loading environments</option>';
+                envSelect.disabled = false;
+            }
+        }
+
         function connect() {
             if (eventSource) {
                 disconnect();
@@ -213,7 +356,29 @@
             const apiKey = document.getElementById('apiKey').value;
 
             if (!org || !app || !env) {
-                alert('Please fill in organization, application, and environment');
+                addEvent('error', { message: 'Please select organization, application, and environment' });
+                updateStatus('disconnected', 'Missing required fields');
+                return;
+            }
+
+            // Validate that the selected values exist in our loaded data
+            const orgExists = organizationsData.find(o => o.slug === org);
+            const appExists = applicationsData.find(a => a.slug === app);
+            const envExists = environmentsData.find(e => e.slug === env);
+
+            if (!orgExists) {
+                addEvent('error', { message: `Organization '${org}' not found` });
+                updateStatus('disconnected', 'Invalid organization');
+                return;
+            }
+            if (!appExists) {
+                addEvent('error', { message: `Application '${app}' not found in organization '${org}'` });
+                updateStatus('disconnected', 'Invalid application');
+                return;
+            }
+            if (!envExists) {
+                addEvent('error', { message: `Environment '${env}' not found in application '${org}/${app}'` });
+                updateStatus('disconnected', 'Invalid environment');
                 return;
             }
 
@@ -222,10 +387,13 @@
             // Choose endpoint based on whether API key is provided
             let url;
             if (apiKey) {
-                url = `/api/events/${env}`;
+                url = `/api/events/${env}?api_key=${encodeURIComponent(apiKey)}`;
             } else {
                 url = `/events/${org}/${app}/${env}`;
             }
+
+            console.log('Connecting to:', url);
+            addEvent('info', { message: `Connecting to ${url}` });
 
             eventSource = new EventSource(url);
 
@@ -258,11 +426,20 @@
 
             // Handle errors
             eventSource.onerror = function(event) {
-                addEvent('error', { message: 'Connection error occurred' });
-                updateStatus('disconnected', 'Connection error');
-                
-                document.getElementById('connectBtn').disabled = false;
-                document.getElementById('disconnectBtn').disabled = true;
+                console.error('SSE Error:', event);
+                addEvent('error', {
+                    message: 'Connection error occurred',
+                    readyState: eventSource.readyState,
+                    url: url
+                });
+
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    updateStatus('disconnected', 'Connection closed');
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('disconnectBtn').disabled = true;
+                } else {
+                    updateStatus('connecting', 'Reconnecting...');
+                }
             };
 
             // Handle successful connection
@@ -293,6 +470,12 @@
             if (eventSource) {
                 eventSource.close();
             }
+        });
+
+        // Initialize page
+        window.addEventListener('DOMContentLoaded', function() {
+            addEvent('info', { message: 'Loading available organizations, applications, and environments...' });
+            loadOrganizations();
         });
     </script>
 </body>
