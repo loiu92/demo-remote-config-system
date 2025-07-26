@@ -99,25 +99,29 @@ func (h *SSEHandler) StreamConfigUpdates(c *gin.Context) {
 	}
 
 	// Handle client connection
-	c.Stream(func(w gin.ResponseWriter) bool {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	c.Writer.Header().Set("Access-Control-Allow-Headers", "Cache-Control")
+
+	for {
 		select {
 		case <-ctx.Done():
-			return false
+			return
 
 		case message, ok := <-client.Channel:
 			if !ok {
-				return false
+				return
 			}
 
 			// Update last ping
 			h.sseService.Ping(client.ID)
 
 			// Send SSE message
-			if err := h.writeSSEMessage(w, message); err != nil {
-				return false
+			if err := h.writeSSEMessage(c.Writer, message); err != nil {
+				return
 			}
-
-			return true
 
 		case <-time.After(30 * time.Second):
 			// Send keep-alive ping
@@ -128,16 +132,14 @@ func (h *SSEHandler) StreamConfigUpdates(c *gin.Context) {
 				},
 			}
 
-			if err := h.writeSSEMessage(w, pingMsg); err != nil {
-				return false
+			if err := h.writeSSEMessage(c.Writer, pingMsg); err != nil {
+				return
 			}
 
 			// Update last ping
 			h.sseService.Ping(client.ID)
-
-			return true
 		}
-	})
+	}
 }
 
 // StreamConfigUpdatesWithAPIKey handles GET /api/events/:env with API key authentication
@@ -232,25 +234,29 @@ func (h *SSEHandler) StreamConfigUpdatesWithAPIKey(c *gin.Context) {
 	}
 
 	// Handle client connection
-	c.Stream(func(w gin.ResponseWriter) bool {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	c.Writer.Header().Set("Access-Control-Allow-Headers", "Cache-Control")
+
+	for {
 		select {
 		case <-ctx.Done():
-			return false
+			return
 
 		case message, ok := <-client.Channel:
 			if !ok {
-				return false
+				return
 			}
 
 			// Update last ping
 			h.sseService.Ping(client.ID)
 
 			// Send SSE message
-			if err := h.writeSSEMessage(w, message); err != nil {
-				return false
+			if err := h.writeSSEMessage(c.Writer, message); err != nil {
+				return
 			}
-
-			return true
 
 		case <-time.After(30 * time.Second):
 			// Send keep-alive ping
@@ -261,16 +267,14 @@ func (h *SSEHandler) StreamConfigUpdatesWithAPIKey(c *gin.Context) {
 				},
 			}
 
-			if err := h.writeSSEMessage(w, pingMsg); err != nil {
-				return false
+			if err := h.writeSSEMessage(c.Writer, pingMsg); err != nil {
+				return
 			}
 
 			// Update last ping
 			h.sseService.Ping(client.ID)
-
-			return true
 		}
-	})
+	}
 }
 
 // GetSSEStats handles GET /admin/sse/stats
