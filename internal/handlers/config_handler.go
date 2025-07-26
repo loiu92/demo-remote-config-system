@@ -249,13 +249,12 @@ func (h *ConfigHandler) GetConfigChanges(c *gin.Context) {
 
 // HealthCheck handles GET /health
 func (h *ConfigHandler) HealthCheck(c *gin.Context) {
+	services := h.configService.HealthCheck()
+
 	c.JSON(http.StatusOK, models.HealthResponse{
 		Status:    "ok",
 		Message:   "Remote Config System is running",
 		Timestamp: time.Now(),
-		Services: map[string]string{
-			"database": "connected",
-			"cache":    "connected",
-		},
+		Services:  services,
 	})
 }

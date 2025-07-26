@@ -31,6 +31,10 @@ clean:
 test:
 	docker-compose exec api go test ./...
 
+# Tidy go modules
+tidy:
+	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go mod tidy
+
 # Build the application
 build:
 	docker-compose build

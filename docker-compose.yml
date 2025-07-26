@@ -54,19 +54,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Demo Application
-  demo-app:
-    build:
-      context: .
-      dockerfile: demo-app/Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - CONFIG_API_URL=http://api:8080
-      - API_KEY=demo-app-key
-    depends_on:
-      - api
-    restart: unless-stopped
+
 
 volumes:
   postgres_data:

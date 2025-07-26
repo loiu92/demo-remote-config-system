@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"remote-config-system/internal/cache"
 	"remote-config-system/internal/db"
 	"remote-config-system/internal/models"
 )
@@ -13,17 +14,32 @@ import (
 // ConfigService handles configuration business logic
 type ConfigService struct {
 	repos *db.Repositories
+	cache *cache.RedisClient
 }
 
 // NewConfigService creates a new configuration service
-func NewConfigService(repos *db.Repositories) *ConfigService {
+func NewConfigService(repos *db.Repositories, cacheClient *cache.RedisClient) *ConfigService {
 	return &ConfigService{
 		repos: repos,
+		cache: cacheClient,
 	}
 }
 
 // GetConfiguration retrieves the active configuration for an environment
 func (s *ConfigService) GetConfiguration(orgSlug, appSlug, envSlug string) (*models.ConfigResponse, error) {
+	// Try to get from cache first
+	if s.cache != nil {
+		cacheKey := cache.GenerateConfigKey(orgSlug, appSlug, envSlug)
+		if cachedData, err := s.cache.GetConfig(cacheKey); err == nil && cachedData != nil {
+			var response models.ConfigResponse
+			if err := json.Unmarshal(cachedData, &response); err == nil {
+				log.Printf("Cache hit for config: %s", cacheKey)
+				return &response, nil
+			}
+			log.Printf("Failed to unmarshal cached config: %v", err)
+		}
+	}
+
 	// Get the environment with all relationships
 	env, err := s.repos.Environments.GetBySlug(orgSlug, appSlug, envSlug)
 	if err != nil {
@@ -46,11 +62,34 @@ func (s *ConfigService) GetConfiguration(orgSlug, appSlug, envSlug string) (*mod
 		UpdatedAt:    configVersion.CreatedAt,
 	}
 
+	// Cache the response
+	if s.cache != nil {
+		cacheKey := cache.GenerateConfigKey(orgSlug, appSlug, envSlug)
+		if err := s.cache.SetConfig(cacheKey, response); err != nil {
+			log.Printf("Failed to cache config: %v", err)
+		} else {
+			log.Printf("Cached config: %s", cacheKey)
+		}
+	}
+
 	return response, nil
 }
 
 // GetConfigurationByAPIKey retrieves configuration using API key authentication
 func (s *ConfigService) GetConfigurationByAPIKey(apiKey, envSlug string) (*models.ConfigResponse, error) {
+	// Try to get from cache first
+	if s.cache != nil {
+		cacheKey := cache.GenerateAPIKeyConfigKey(apiKey, envSlug)
+		if cachedData, err := s.cache.GetConfig(cacheKey); err == nil && cachedData != nil {
+			var response models.ConfigResponse
+			if err := json.Unmarshal(cachedData, &response); err == nil {
+				log.Printf("Cache hit for API key config: %s", cacheKey)
+				return &response, nil
+			}
+			log.Printf("Failed to unmarshal cached API key config: %v", err)
+		}
+	}
+
 	// Get the application by API key
 	app, err := s.repos.Applications.GetByAPIKey(apiKey)
 	if err != nil {
@@ -77,6 +116,16 @@ func (s *ConfigService) GetConfigurationByAPIKey(apiKey, envSlug string) (*model
 		Version:      configVersion.Version,
 		Config:       configVersion.ConfigJSON,
 		UpdatedAt:    configVersion.CreatedAt,
+	}
+
+	// Cache the response
+	if s.cache != nil {
+		cacheKey := cache.GenerateAPIKeyConfigKey(apiKey, envSlug)
+		if err := s.cache.SetConfig(cacheKey, response); err != nil {
+			log.Printf("Failed to cache API key config: %v", err)
+		} else {
+			log.Printf("Cached API key config: %s", cacheKey)
+		}
 	}
 
 	return response, nil
@@ -125,6 +174,23 @@ func (s *ConfigService) UpdateConfiguration(orgSlug, appSlug, envSlug string, re
 
 	if err := s.repos.ConfigChanges.Create(change); err != nil {
 		log.Printf("Failed to log configuration change: %v", err)
+	}
+
+	// Invalidate cache for this configuration
+	if s.cache != nil {
+		// Invalidate both regular and API key caches
+		configKey := cache.GenerateConfigKey(env.Application.Organization.Slug, env.Application.Slug, env.Slug)
+		if err := s.cache.DeleteConfig(configKey); err != nil {
+			log.Printf("Failed to invalidate config cache: %v", err)
+		}
+
+		// Invalidate API key cache pattern for this environment
+		pattern := fmt.Sprintf("config:api:*:%s", env.Slug)
+		if err := s.cache.InvalidatePattern(pattern); err != nil {
+			log.Printf("Failed to invalidate API key cache pattern: %v", err)
+		}
+
+		log.Printf("Invalidated cache for config update: %s", configKey)
 	}
 
 	// Build the response
@@ -176,6 +242,23 @@ func (s *ConfigService) RollbackConfiguration(orgSlug, appSlug, envSlug string, 
 
 	if err := s.repos.ConfigChanges.Create(change); err != nil {
 		log.Printf("Failed to log configuration rollback: %v", err)
+	}
+
+	// Invalidate cache for this configuration
+	if s.cache != nil {
+		// Invalidate both regular and API key caches
+		configKey := cache.GenerateConfigKey(env.Application.Organization.Slug, env.Application.Slug, env.Slug)
+		if err := s.cache.DeleteConfig(configKey); err != nil {
+			log.Printf("Failed to invalidate config cache: %v", err)
+		}
+
+		// Invalidate API key cache pattern for this environment
+		pattern := fmt.Sprintf("config:api:*:%s", env.Slug)
+		if err := s.cache.InvalidatePattern(pattern); err != nil {
+			log.Printf("Failed to invalidate API key cache pattern: %v", err)
+		}
+
+		log.Printf("Invalidated cache for config rollback: %s", configKey)
 	}
 
 	// Build the response
@@ -263,4 +346,25 @@ func (s *ConfigService) ValidateAPIKey(apiKey string) (*models.Application, erro
 	}
 
 	return app, nil
+}
+
+// HealthCheck returns the health status of the service and its dependencies
+func (s *ConfigService) HealthCheck() map[string]string {
+	services := make(map[string]string)
+
+	// Always assume database is connected since we got this far
+	services["database"] = "connected"
+
+	// Check cache health
+	if s.cache != nil {
+		if err := s.cache.Health(); err != nil {
+			services["cache"] = "disconnected"
+		} else {
+			services["cache"] = "connected"
+		}
+	} else {
+		services["cache"] = "disabled"
+	}
+
+	return services
 }
