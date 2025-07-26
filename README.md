@@ -55,14 +55,95 @@ make down
 ## API Endpoints
 
 ### Configuration API (for applications)
-- `GET /api/config/{org}/{app}/{env}` - Get current configuration
+- `GET /config/{org}/{app}/{env}` - Get current configuration (public)
+- `GET /api/config/{env}` - Get current configuration (API key required)
 - `GET /api/events/{org}/{app}/{env}` - SSE stream for real-time updates
 
 ### Management API (admin)
-- `GET /admin/orgs/{org}/apps/{app}/envs/{env}` - Get configuration
-- `PUT /admin/orgs/{org}/apps/{app}/envs/{env}` - Update configuration
+
+#### Organization Management
+- `GET /admin/orgs` - List all organizations
+- `POST /admin/orgs` - Create a new organization
+- `GET /admin/orgs/{org}` - Get organization details
+- `PUT /admin/orgs/{org}` - Update organization
+- `DELETE /admin/orgs/{org}` - Delete organization
+
+#### Application Management
+- `GET /admin/orgs/{org}/apps` - List applications in organization
+- `POST /admin/orgs/{org}/apps` - Create a new application
+- `GET /admin/orgs/{org}/apps/{app}` - Get application details
+- `PUT /admin/orgs/{org}/apps/{app}` - Update application
+- `DELETE /admin/orgs/{org}/apps/{app}` - Delete application
+
+#### Environment Management
+- `GET /admin/orgs/{org}/apps/{app}/envs` - List environments in application
+- `POST /admin/orgs/{org}/apps/{app}/envs` - Create a new environment
+- `GET /admin/orgs/{org}/apps/{app}/envs/{env}` - Get environment details
+- `PUT /admin/orgs/{org}/apps/{app}/envs/{env}` - Update environment
+- `DELETE /admin/orgs/{org}/apps/{app}/envs/{env}` - Delete environment
+
+#### Configuration Management
+- `PUT /admin/orgs/{org}/apps/{app}/envs/{env}/config` - Update configuration
+- `GET /admin/orgs/{org}/apps/{app}/envs/{env}/history` - Get configuration version history
+- `GET /admin/orgs/{org}/apps/{app}/envs/{env}/changes` - Get configuration change log
 - `POST /admin/orgs/{org}/apps/{app}/envs/{env}/rollback` - Rollback to previous version
-- `GET /admin/orgs/{org}/apps/{app}/envs/{env}/history` - Get version history
+
+### API Usage Examples
+
+#### Create an Organization
+```bash
+curl -X POST http://localhost:8080/admin/orgs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Company",
+    "slug": "mycompany"
+  }'
+```
+
+#### Create an Application
+```bash
+curl -X POST http://localhost:8080/admin/orgs/mycompany/apps \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Web App",
+    "slug": "webapp"
+  }'
+```
+
+#### Create an Environment
+```bash
+curl -X POST http://localhost:8080/admin/orgs/mycompany/apps/webapp/envs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production",
+    "slug": "prod"
+  }'
+```
+
+#### Update Configuration
+```bash
+curl -X PUT http://localhost:8080/admin/orgs/mycompany/apps/webapp/envs/prod/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config": {
+      "database_url": "postgres://localhost:5432/myapp",
+      "api_key": "secret-key",
+      "debug": false
+    },
+    "created_by": "admin@mycompany.com"
+  }'
+```
+
+#### Get Configuration (Public)
+```bash
+curl http://localhost:8080/config/mycompany/webapp/prod
+```
+
+#### Get Configuration (API Key)
+```bash
+curl -H "X-API-Key: your-api-key" \
+  http://localhost:8080/api/config/prod
+```
 
 ## Project Structure
 

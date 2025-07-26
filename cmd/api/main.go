@@ -57,6 +57,7 @@ func main() {
 
 	// Initialize handlers
 	configHandler := handlers.NewConfigHandler(configService)
+	managementHandler := handlers.NewManagementHandler(configService)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(configService)
@@ -92,16 +93,37 @@ func main() {
 	adminAPI.Use(authMiddleware.OptionalAPIKeyAuth())
 	{
 		// Organization management
+		adminAPI.GET("/orgs", managementHandler.ListOrganizations)
+		adminAPI.POST("/orgs", managementHandler.CreateOrganization)
+
 		orgs := adminAPI.Group("/orgs/:org")
 		{
+			orgs.GET("", managementHandler.GetOrganization)
+			orgs.PUT("", managementHandler.UpdateOrganization)
+			orgs.DELETE("", managementHandler.DeleteOrganization)
+
 			// Application management
+			orgs.GET("/apps", managementHandler.ListApplications)
+			orgs.POST("/apps", managementHandler.CreateApplication)
+
 			apps := orgs.Group("/apps/:app")
 			{
+				apps.GET("", managementHandler.GetApplication)
+				apps.PUT("", managementHandler.UpdateApplication)
+				apps.DELETE("", managementHandler.DeleteApplication)
+
 				// Environment management
+				apps.GET("/envs", managementHandler.ListEnvironments)
+				apps.POST("/envs", managementHandler.CreateEnvironment)
+
 				envs := apps.Group("/envs/:env")
 				{
+					envs.GET("", managementHandler.GetEnvironment)
+					envs.PUT("", managementHandler.UpdateEnvironment)
+					envs.DELETE("", managementHandler.DeleteEnvironment)
+
 					// Configuration management
-					envs.PUT("", configHandler.UpdateConfig)
+					envs.PUT("/config", configHandler.UpdateConfig)
 					envs.GET("/history", configHandler.GetConfigHistory)
 					envs.GET("/changes", configHandler.GetConfigChanges)
 					envs.POST("/rollback", configHandler.RollbackConfig)
@@ -112,13 +134,32 @@ func main() {
 
 	log.Printf("Starting server on port %s", port)
 	log.Println("Available endpoints:")
-	log.Println("  GET  /health                                    - Health check")
-	log.Println("  GET  /config/:org/:app/:env                     - Get config (public)")
-	log.Println("  GET  /api/config/:env                           - Get config (API key required)")
-	log.Println("  PUT  /admin/orgs/:org/apps/:app/envs/:env       - Update config")
-	log.Println("  GET  /admin/orgs/:org/apps/:app/envs/:env/history - Get config history")
-	log.Println("  GET  /admin/orgs/:org/apps/:app/envs/:env/changes - Get config changes")
-	log.Println("  POST /admin/orgs/:org/apps/:app/envs/:env/rollback - Rollback config")
+	log.Println("  GET  /health                                         - Health check")
+	log.Println("  GET  /config/:org/:app/:env                          - Get config (public)")
+	log.Println("  GET  /api/config/:env                                - Get config (API key required)")
+	log.Println("")
+	log.Println("Management API:")
+	log.Println("  GET    /admin/orgs                                   - List organizations")
+	log.Println("  POST   /admin/orgs                                   - Create organization")
+	log.Println("  GET    /admin/orgs/:org                              - Get organization")
+	log.Println("  PUT    /admin/orgs/:org                              - Update organization")
+	log.Println("  DELETE /admin/orgs/:org                              - Delete organization")
+	log.Println("  GET    /admin/orgs/:org/apps                         - List applications")
+	log.Println("  POST   /admin/orgs/:org/apps                         - Create application")
+	log.Println("  GET    /admin/orgs/:org/apps/:app                    - Get application")
+	log.Println("  PUT    /admin/orgs/:org/apps/:app                    - Update application")
+	log.Println("  DELETE /admin/orgs/:org/apps/:app                    - Delete application")
+	log.Println("  GET    /admin/orgs/:org/apps/:app/envs               - List environments")
+	log.Println("  POST   /admin/orgs/:org/apps/:app/envs               - Create environment")
+	log.Println("  GET    /admin/orgs/:org/apps/:app/envs/:env          - Get environment")
+	log.Println("  PUT    /admin/orgs/:org/apps/:app/envs/:env          - Update environment")
+	log.Println("  DELETE /admin/orgs/:org/apps/:app/envs/:env          - Delete environment")
+	log.Println("")
+	log.Println("Configuration API:")
+	log.Println("  PUT    /admin/orgs/:org/apps/:app/envs/:env/config   - Update config")
+	log.Println("  GET    /admin/orgs/:org/apps/:app/envs/:env/history  - Get config history")
+	log.Println("  GET    /admin/orgs/:org/apps/:app/envs/:env/changes  - Get config changes")
+	log.Println("  POST   /admin/orgs/:org/apps/:app/envs/:env/rollback - Rollback config")
 
 	if err := r.Run(":" + port); err != nil {
 		log.Fatal("Failed to start server:", err)

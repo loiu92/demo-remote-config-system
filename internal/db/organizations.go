@@ -148,6 +148,47 @@ func (r *OrganizationRepository) Create(org *models.Organization) error {
 func (r *OrganizationRepository) Update(org *models.Organization) error {
 	query := `
 		UPDATE organizations
+		SET name = $2
+		WHERE id = $1
+		RETURNING updated_at
+	`
+
+	err := r.db.QueryRow(query, org.ID, org.Name).Scan(&org.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("organization not found: %s", org.ID)
+		}
+		return fmt.Errorf("failed to update organization: %w", err)
+	}
+
+	return nil
+}
+
+// Delete deletes an organization
+func (r *OrganizationRepository) Delete(id uuid.UUID) error {
+	query := `DELETE FROM organizations WHERE id = $1`
+
+	result, err := r.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete organization: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("organization not found: %s", id)
+	}
+
+	return nil
+}
+
+// Update updates an existing organization
+func (r *OrganizationRepository) Update(org *models.Organization) error {
+	query := `
+		UPDATE organizations
 		SET name = $2, slug = $3
 		WHERE id = $1
 		RETURNING updated_at

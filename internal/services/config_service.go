@@ -1,6 +1,8 @@
 package services
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -367,4 +369,266 @@ func (s *ConfigService) HealthCheck() map[string]string {
 	}
 
 	return services
+}
+
+// Organization Management Methods
+
+// ListOrganizations retrieves all organizations with pagination
+func (s *ConfigService) ListOrganizations(params models.PaginationParams) (*models.PaginatedResponse, error) {
+	orgs, totalCount, err := s.repos.Organizations.List(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list organizations: %w", err)
+	}
+
+	response := models.NewPaginatedResponse(orgs, params.Page, params.PageSize, totalCount)
+	return &response, nil
+}
+
+// GetOrganization retrieves an organization by slug
+func (s *ConfigService) GetOrganization(slug string) (*models.Organization, error) {
+	org, err := s.repos.Organizations.GetBySlug(slug)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found: %w", err)
+	}
+	return org, nil
+}
+
+// CreateOrganization creates a new organization
+func (s *ConfigService) CreateOrganization(req *models.CreateOrganizationRequest) (*models.Organization, error) {
+	// Check if organization with this slug already exists
+	if _, err := s.repos.Organizations.GetBySlug(req.Slug); err == nil {
+		return nil, fmt.Errorf("organization with slug '%s' already exists", req.Slug)
+	}
+
+	org := &models.Organization{
+		Name: req.Name,
+		Slug: req.Slug,
+	}
+
+	if err := s.repos.Organizations.Create(org); err != nil {
+		return nil, fmt.Errorf("failed to create organization: %w", err)
+	}
+
+	return org, nil
+}
+
+// UpdateOrganization updates an existing organization
+func (s *ConfigService) UpdateOrganization(slug string, req *models.UpdateOrganizationRequest) (*models.Organization, error) {
+	org, err := s.repos.Organizations.GetBySlug(slug)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found: %w", err)
+	}
+
+	org.Name = req.Name
+
+	if err := s.repos.Organizations.Update(org); err != nil {
+		return nil, fmt.Errorf("failed to update organization: %w", err)
+	}
+
+	return org, nil
+}
+
+// DeleteOrganization deletes an organization
+func (s *ConfigService) DeleteOrganization(slug string) error {
+	org, err := s.repos.Organizations.GetBySlug(slug)
+	if err != nil {
+		return fmt.Errorf("organization not found: %w", err)
+	}
+
+	if err := s.repos.Organizations.Delete(org.ID); err != nil {
+		return fmt.Errorf("failed to delete organization: %w", err)
+	}
+
+	return nil
+}
+
+// Application Management Methods
+
+// ListApplications retrieves all applications for an organization with pagination
+func (s *ConfigService) ListApplications(orgSlug string, params models.PaginationParams) (*models.PaginatedResponse, error) {
+	org, err := s.repos.Organizations.GetBySlug(orgSlug)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found: %w", err)
+	}
+
+	apps, totalCount, err := s.repos.Applications.ListByOrganization(org.ID, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list applications: %w", err)
+	}
+
+	response := models.NewPaginatedResponse(apps, params.Page, params.PageSize, totalCount)
+	return &response, nil
+}
+
+// GetApplication retrieves an application by organization and application slug
+func (s *ConfigService) GetApplication(orgSlug, appSlug string) (*models.Application, error) {
+	app, err := s.repos.Applications.GetBySlug(orgSlug, appSlug)
+	if err != nil {
+		return nil, fmt.Errorf("application not found: %w", err)
+	}
+	return app, nil
+}
+
+// CreateApplication creates a new application
+func (s *ConfigService) CreateApplication(orgSlug string, req *models.CreateApplicationRequest) (*models.Application, error) {
+	org, err := s.repos.Organizations.GetBySlug(orgSlug)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found: %w", err)
+	}
+
+	// Check if application with this slug already exists in the organization
+	if exists, err := s.repos.Applications.Exists(org.ID, req.Slug); err != nil {
+		return nil, fmt.Errorf("failed to check application existence: %w", err)
+	} else if exists {
+		return nil, fmt.Errorf("application with slug '%s' already exists in organization '%s'", req.Slug, orgSlug)
+	}
+
+	// Generate API key if not provided
+	apiKey := req.APIKey
+	if apiKey == "" {
+		apiKey = generateAPIKey()
+	}
+
+	app := &models.Application{
+		OrgID:  org.ID,
+		Name:   req.Name,
+		Slug:   req.Slug,
+		APIKey: apiKey,
+	}
+
+	if err := s.repos.Applications.Create(app); err != nil {
+		return nil, fmt.Errorf("failed to create application: %w", err)
+	}
+
+	// Load the organization relationship
+	app.Organization = org
+
+	return app, nil
+}
+
+// UpdateApplication updates an existing application
+func (s *ConfigService) UpdateApplication(orgSlug, appSlug string, req *models.UpdateApplicationRequest) (*models.Application, error) {
+	app, err := s.repos.Applications.GetBySlug(orgSlug, appSlug)
+	if err != nil {
+		return nil, fmt.Errorf("application not found: %w", err)
+	}
+
+	app.Name = req.Name
+
+	if err := s.repos.Applications.Update(app); err != nil {
+		return nil, fmt.Errorf("failed to update application: %w", err)
+	}
+
+	return app, nil
+}
+
+// DeleteApplication deletes an application
+func (s *ConfigService) DeleteApplication(orgSlug, appSlug string) error {
+	app, err := s.repos.Applications.GetBySlug(orgSlug, appSlug)
+	if err != nil {
+		return fmt.Errorf("application not found: %w", err)
+	}
+
+	if err := s.repos.Applications.Delete(app.ID); err != nil {
+		return fmt.Errorf("failed to delete application: %w", err)
+	}
+
+	return nil
+}
+
+// Environment Management Methods
+
+// ListEnvironments retrieves all environments for an application with pagination
+func (s *ConfigService) ListEnvironments(orgSlug, appSlug string, params models.PaginationParams) (*models.PaginatedResponse, error) {
+	app, err := s.repos.Applications.GetBySlug(orgSlug, appSlug)
+	if err != nil {
+		return nil, fmt.Errorf("application not found: %w", err)
+	}
+
+	envs, totalCount, err := s.repos.Environments.ListByApplication(app.ID, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list environments: %w", err)
+	}
+
+	response := models.NewPaginatedResponse(envs, params.Page, params.PageSize, totalCount)
+	return &response, nil
+}
+
+// GetEnvironment retrieves an environment by organization, application, and environment slug
+func (s *ConfigService) GetEnvironment(orgSlug, appSlug, envSlug string) (*models.Environment, error) {
+	env, err := s.repos.Environments.GetBySlug(orgSlug, appSlug, envSlug)
+	if err != nil {
+		return nil, fmt.Errorf("environment not found: %w", err)
+	}
+	return env, nil
+}
+
+// CreateEnvironment creates a new environment
+func (s *ConfigService) CreateEnvironment(orgSlug, appSlug string, req *models.CreateEnvironmentRequest) (*models.Environment, error) {
+	app, err := s.repos.Applications.GetBySlug(orgSlug, appSlug)
+	if err != nil {
+		return nil, fmt.Errorf("application not found: %w", err)
+	}
+
+	// Check if environment with this slug already exists in the application
+	if exists, err := s.repos.Environments.Exists(app.ID, req.Slug); err != nil {
+		return nil, fmt.Errorf("failed to check environment existence: %w", err)
+	} else if exists {
+		return nil, fmt.Errorf("environment with slug '%s' already exists in application '%s'", req.Slug, appSlug)
+	}
+
+	env := &models.Environment{
+		AppID: app.ID,
+		Name:  req.Name,
+		Slug:  req.Slug,
+	}
+
+	if err := s.repos.Environments.Create(env); err != nil {
+		return nil, fmt.Errorf("failed to create environment: %w", err)
+	}
+
+	// Load the application relationship
+	env.Application = app
+
+	return env, nil
+}
+
+// UpdateEnvironment updates an existing environment
+func (s *ConfigService) UpdateEnvironment(orgSlug, appSlug, envSlug string, req *models.UpdateEnvironmentRequest) (*models.Environment, error) {
+	env, err := s.repos.Environments.GetBySlug(orgSlug, appSlug, envSlug)
+	if err != nil {
+		return nil, fmt.Errorf("environment not found: %w", err)
+	}
+
+	env.Name = req.Name
+
+	if err := s.repos.Environments.Update(env); err != nil {
+		return nil, fmt.Errorf("failed to update environment: %w", err)
+	}
+
+	return env, nil
+}
+
+// DeleteEnvironment deletes an environment
+func (s *ConfigService) DeleteEnvironment(orgSlug, appSlug, envSlug string) error {
+	env, err := s.repos.Environments.GetBySlug(orgSlug, appSlug, envSlug)
+	if err != nil {
+		return fmt.Errorf("environment not found: %w", err)
+	}
+
+	if err := s.repos.Environments.Delete(env.ID); err != nil {
+		return fmt.Errorf("failed to delete environment: %w", err)
+	}
+
+	return nil
+}
+
+// generateAPIKey generates a random API key
+func generateAPIKey() string {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to timestamp-based key if random generation fails
+		return fmt.Sprintf("api_%d", time.Now().UnixNano())
+	}
+	return "api_" + hex.EncodeToString(bytes)
 }

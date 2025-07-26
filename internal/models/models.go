@@ -93,6 +93,40 @@ type RollbackRequest struct {
 	CreatedBy *string `json:"created_by"`
 }
 
+// CreateOrganizationRequest represents a request to create an organization
+type CreateOrganizationRequest struct {
+	Name string `json:"name" binding:"required,min=1,max=100"`
+	Slug string `json:"slug" binding:"required,min=1,max=50,alphanum"`
+}
+
+// UpdateOrganizationRequest represents a request to update an organization
+type UpdateOrganizationRequest struct {
+	Name string `json:"name" binding:"required,min=1,max=100"`
+}
+
+// CreateApplicationRequest represents a request to create an application
+type CreateApplicationRequest struct {
+	Name   string `json:"name" binding:"required,min=1,max=100"`
+	Slug   string `json:"slug" binding:"required,min=1,max=50,alphanum"`
+	APIKey string `json:"api_key,omitempty"`
+}
+
+// UpdateApplicationRequest represents a request to update an application
+type UpdateApplicationRequest struct {
+	Name string `json:"name" binding:"required,min=1,max=100"`
+}
+
+// CreateEnvironmentRequest represents a request to create an environment
+type CreateEnvironmentRequest struct {
+	Name string `json:"name" binding:"required,min=1,max=100"`
+	Slug string `json:"slug" binding:"required,min=1,max=50,alphanum"`
+}
+
+// UpdateEnvironmentRequest represents a request to update an environment
+type UpdateEnvironmentRequest struct {
+	Name string `json:"name" binding:"required,min=1,max=100"`
+}
+
 // HealthResponse represents the health check response
 type HealthResponse struct {
 	Status    string            `json:"status"`
