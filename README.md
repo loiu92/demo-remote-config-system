@@ -57,7 +57,10 @@ make down
 ### Configuration API (for applications)
 - `GET /config/{org}/{app}/{env}` - Get current configuration (public)
 - `GET /api/config/{env}` - Get current configuration (API key required)
-- `GET /api/events/{org}/{app}/{env}` - SSE stream for real-time updates
+
+### Server-Sent Events (SSE) API
+- `GET /events/{org}/{app}/{env}` - SSE stream for real-time configuration updates (public)
+- `GET /api/events/{env}` - SSE stream for real-time configuration updates (API key required)
 
 ### Management API (admin)
 
@@ -65,6 +68,9 @@ make down
 - `GET /admin/cache/stats` - Get cache statistics and performance metrics
 - `POST /admin/cache/warm` - Preload frequently accessed configurations into cache
 - `DELETE /admin/cache` - Clear all cached configurations
+
+#### SSE Management
+- `GET /admin/sse/stats` - Get SSE statistics and connected clients information
 
 #### Organization Management
 - `GET /admin/orgs` - List all organizations
@@ -160,6 +166,62 @@ curl -X POST http://localhost:8080/admin/cache/warm
 
 # Clear all cache
 curl -X DELETE http://localhost:8080/admin/cache
+```
+
+#### Server-Sent Events (Real-time Updates)
+```bash
+# Listen to configuration changes (public endpoint)
+curl -N http://localhost:8080/events/mycompany/webapp/prod
+
+# Listen to configuration changes (with API key)
+curl -N -H "X-API-Key: your-api-key" \
+  http://localhost:8080/api/events/prod
+
+# Get SSE statistics
+curl http://localhost:8080/admin/sse/stats
+```
+
+#### JavaScript SSE Client Example
+```javascript
+// Connect to SSE stream
+const eventSource = new EventSource('/events/mycompany/webapp/prod');
+
+// Handle initial configuration
+eventSource.addEventListener('initial_config', function(event) {
+    const config = JSON.parse(event.data);
+    console.log('Initial config:', config);
+    updateApplicationConfig(config.config);
+});
+
+// Handle configuration updates
+eventSource.addEventListener('config_update', function(event) {
+    const update = JSON.parse(event.data);
+    console.log('Config updated:', update);
+    updateApplicationConfig(update.config);
+});
+
+// Handle rollbacks
+eventSource.addEventListener('config_update', function(event) {
+    const update = JSON.parse(event.data);
+    if (update.action === 'rollback') {
+        console.log('Config rolled back to version:', update.version);
+        updateApplicationConfig(update.config);
+    }
+});
+
+// Handle connection events
+eventSource.addEventListener('connected', function(event) {
+    console.log('Connected to SSE stream');
+});
+
+eventSource.addEventListener('ping', function(event) {
+    console.log('Keep-alive ping received');
+});
+
+// Handle errors
+eventSource.onerror = function(event) {
+    console.error('SSE connection error:', event);
+};
 ```
 
 ## Configuration

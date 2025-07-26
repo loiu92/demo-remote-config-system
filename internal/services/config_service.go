@@ -11,19 +11,22 @@ import (
 	"remote-config-system/internal/cache"
 	"remote-config-system/internal/db"
 	"remote-config-system/internal/models"
+	"remote-config-system/internal/sse"
 )
 
 // ConfigService handles configuration business logic
 type ConfigService struct {
-	repos *db.Repositories
-	cache *cache.RedisClient
+	repos      *db.Repositories
+	cache      *cache.RedisClient
+	sseService *sse.SSEService
 }
 
 // NewConfigService creates a new configuration service
-func NewConfigService(repos *db.Repositories, cacheClient *cache.RedisClient) *ConfigService {
+func NewConfigService(repos *db.Repositories, cacheClient *cache.RedisClient, sseService *sse.SSEService) *ConfigService {
 	return &ConfigService{
-		repos: repos,
-		cache: cacheClient,
+		repos:      repos,
+		cache:      cacheClient,
+		sseService: sseService,
 	}
 }
 
@@ -194,6 +197,20 @@ func (s *ConfigService) UpdateConfiguration(orgSlug, appSlug, envSlug string, re
 		UpdatedAt:    newVersion.CreatedAt,
 	}
 
+	// Broadcast SSE event for configuration update
+	if s.sseService != nil {
+		updateEvent := models.ConfigUpdateEvent{
+			Organization: response.Organization,
+			Application:  response.Application,
+			Environment:  response.Environment,
+			Version:      response.Version,
+			Config:       response.Config,
+			Action:       "update",
+			UpdatedAt:    response.UpdatedAt,
+		}
+		s.sseService.BroadcastConfigUpdate(updateEvent)
+	}
+
 	return response, nil
 }
 
@@ -248,6 +265,20 @@ func (s *ConfigService) RollbackConfiguration(orgSlug, appSlug, envSlug string, 
 		Version:      targetConfig.Version,
 		Config:       targetConfig.ConfigJSON,
 		UpdatedAt:    time.Now(), // Use current time for rollback
+	}
+
+	// Broadcast SSE event for configuration rollback
+	if s.sseService != nil {
+		rollbackEvent := models.ConfigUpdateEvent{
+			Organization: response.Organization,
+			Application:  response.Application,
+			Environment:  response.Environment,
+			Version:      response.Version,
+			Config:       response.Config,
+			Action:       "rollback",
+			UpdatedAt:    response.UpdatedAt,
+		}
+		s.sseService.BroadcastConfigUpdate(rollbackEvent)
 	}
 
 	return response, nil

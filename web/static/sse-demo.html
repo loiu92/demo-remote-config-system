@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSE Demo - Remote Config System</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .events {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background: #f8f9fa;
+        }
+        .event {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .event.initial_config {
+            background: #e7f3ff;
+            border-left: 4px solid #007bff;
+        }
+        .event.config_update {
+            background: #e8f5e8;
+            border-left: 4px solid #28a745;
+        }
+        .event.connected {
+            background: #f0f8ff;
+            border-left: 4px solid #17a2b8;
+        }
+        .event.ping {
+            background: #f8f9fa;
+            border-left: 4px solid #6c757d;
+        }
+        .event.error {
+            background: #ffe6e6;
+            border-left: 4px solid #dc3545;
+        }
+        .config-display {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .config-display pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .timestamp {
+            color: #6c757d;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Server-Sent Events Demo</h1>
+        <p>Connect to real-time configuration updates using Server-Sent Events.</p>
+        
+        <div class="form-group">
+            <label for="organization">Organization:</label>
+            <input type="text" id="organization" value="mycompany" placeholder="Enter organization slug">
+        </div>
+        
+        <div class="form-group">
+            <label for="application">Application:</label>
+            <input type="text" id="application" value="webapp" placeholder="Enter application slug">
+        </div>
+        
+        <div class="form-group">
+            <label for="environment">Environment:</label>
+            <input type="text" id="environment" value="prod" placeholder="Enter environment slug">
+        </div>
+        
+        <div class="form-group">
+            <label for="apiKey">API Key (optional):</label>
+            <input type="text" id="apiKey" placeholder="Enter API key for authenticated endpoint">
+        </div>
+        
+        <button id="connectBtn" onclick="connect()">Connect</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+        <button onclick="clearEvents()">Clear Events</button>
+    </div>
+
+    <div class="container">
+        <h2>Connection Status</h2>
+        <div id="status" class="status disconnected">Disconnected</div>
+        
+        <h2>Current Configuration</h2>
+        <div id="currentConfig" class="config-display">
+            <em>No configuration loaded</em>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Events Log</h2>
+        <div id="events" class="events">
+            <em>No events yet. Click Connect to start receiving events.</em>
+        </div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let currentConfig = null;
+
+        function updateStatus(status, message) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = message;
+        }
+
+        function addEvent(type, data, timestamp = new Date()) {
+            const eventsEl = document.getElementById('events');
+            const eventEl = document.createElement('div');
+            eventEl.className = `event ${type}`;
+            
+            const timeStr = timestamp.toLocaleTimeString();
+            eventEl.innerHTML = `
+                <div class="timestamp">${timeStr}</div>
+                <strong>${type}:</strong> ${JSON.stringify(data, null, 2)}
+            `;
+            
+            eventsEl.appendChild(eventEl);
+            eventsEl.scrollTop = eventsEl.scrollHeight;
+        }
+
+        function updateCurrentConfig(config) {
+            currentConfig = config;
+            const configEl = document.getElementById('currentConfig');
+            configEl.innerHTML = `<pre>${JSON.stringify(config, null, 2)}</pre>`;
+        }
+
+        function connect() {
+            if (eventSource) {
+                disconnect();
+            }
+
+            const org = document.getElementById('organization').value;
+            const app = document.getElementById('application').value;
+            const env = document.getElementById('environment').value;
+            const apiKey = document.getElementById('apiKey').value;
+
+            if (!org || !app || !env) {
+                alert('Please fill in organization, application, and environment');
+                return;
+            }
+
+            updateStatus('connecting', 'Connecting...');
+
+            // Choose endpoint based on whether API key is provided
+            let url;
+            if (apiKey) {
+                url = `/api/events/${env}`;
+            } else {
+                url = `/events/${org}/${app}/${env}`;
+            }
+
+            eventSource = new EventSource(url);
+
+            // Handle initial configuration
+            eventSource.addEventListener('initial_config', function(event) {
+                const data = JSON.parse(event.data);
+                addEvent('initial_config', data);
+                updateCurrentConfig(data.config);
+            });
+
+            // Handle configuration updates
+            eventSource.addEventListener('config_update', function(event) {
+                const data = JSON.parse(event.data);
+                addEvent('config_update', data);
+                updateCurrentConfig(data.config);
+            });
+
+            // Handle connection events
+            eventSource.addEventListener('connected', function(event) {
+                const data = JSON.parse(event.data);
+                addEvent('connected', data);
+                updateStatus('connected', `Connected to ${org}/${app}/${env}`);
+            });
+
+            // Handle ping events
+            eventSource.addEventListener('ping', function(event) {
+                const data = JSON.parse(event.data);
+                addEvent('ping', data);
+            });
+
+            // Handle errors
+            eventSource.onerror = function(event) {
+                addEvent('error', { message: 'Connection error occurred' });
+                updateStatus('disconnected', 'Connection error');
+                
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+            };
+
+            // Handle successful connection
+            eventSource.onopen = function(event) {
+                updateStatus('connected', `Connected to ${org}/${app}/${env}`);
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+            };
+        }
+
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            updateStatus('disconnected', 'Disconnected');
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('disconnectBtn').disabled = true;
+        }
+
+        function clearEvents() {
+            document.getElementById('events').innerHTML = '<em>Events cleared.</em>';
+        }
+
+        // Handle page unload
+        window.addEventListener('beforeunload', function() {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+    </script>
+</body>
+</html>

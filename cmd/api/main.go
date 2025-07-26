@@ -9,6 +9,7 @@ import (
 	"remote-config-system/internal/handlers"
 	"remote-config-system/internal/middleware"
 	"remote-config-system/internal/services"
+	"remote-config-system/internal/sse"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -52,8 +53,12 @@ func main() {
 	// Initialize repositories
 	repos := db.NewRepositories(database)
 
+	// Initialize SSE service
+	sseService := sse.NewSSEService()
+	log.Println("SSE service initialized")
+
 	// Initialize services
-	configService := services.NewConfigService(repos, redisClient)
+	configService := services.NewConfigService(repos, redisClient, sseService)
 
 	// Warm cache on startup if Redis is available
 	if redisClient != nil {
@@ -68,6 +73,7 @@ func main() {
 	// Initialize handlers
 	configHandler := handlers.NewConfigHandler(configService)
 	managementHandler := handlers.NewManagementHandler(configService)
+	sseHandler := handlers.NewSSEHandler(configService, sseService)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(configService)
@@ -84,10 +90,22 @@ func main() {
 	// Health check endpoint
 	r.GET("/health", configHandler.HealthCheck)
 
+	// Serve static files and demo pages
+	r.Static("/static", "./web/static")
+	r.GET("/demo/sse", func(c *gin.Context) {
+		c.File("./web/static/sse-demo.html")
+	})
+
 	// Public configuration endpoints (no authentication required)
 	publicAPI := r.Group("/config")
 	{
 		publicAPI.GET("/:org/:app/:env", configHandler.GetConfig)
+	}
+
+	// Public SSE endpoints (no authentication required)
+	eventsAPI := r.Group("/events")
+	{
+		eventsAPI.GET("/:org/:app/:env", sseHandler.StreamConfigUpdates)
 	}
 
 	// API endpoints with authentication
@@ -96,6 +114,9 @@ func main() {
 	{
 		// Configuration endpoints for applications
 		apiV1.GET("/config/:env", configHandler.GetConfigByAPIKey)
+
+		// SSE endpoints for applications
+		apiV1.GET("/events/:env", sseHandler.StreamConfigUpdatesWithAPIKey)
 	}
 
 	// Admin endpoints with optional authentication
@@ -106,6 +127,9 @@ func main() {
 		adminAPI.GET("/cache/stats", managementHandler.GetCacheStats)
 		adminAPI.POST("/cache/warm", managementHandler.WarmCache)
 		adminAPI.DELETE("/cache", managementHandler.ClearCache)
+
+		// SSE management
+		adminAPI.GET("/sse/stats", sseHandler.GetSSEStats)
 
 		// Organization management
 		adminAPI.GET("/orgs", managementHandler.ListOrganizations)
@@ -150,13 +174,19 @@ func main() {
 	log.Printf("Starting server on port %s", port)
 	log.Println("Available endpoints:")
 	log.Println("  GET  /health                                         - Health check")
+	log.Println("  GET  /demo/sse                                       - SSE demo page")
 	log.Println("  GET  /config/:org/:app/:env                          - Get config (public)")
+	log.Println("  GET  /events/:org/:app/:env                          - SSE stream (public)")
 	log.Println("  GET  /api/config/:env                                - Get config (API key required)")
+	log.Println("  GET  /api/events/:env                                - SSE stream (API key required)")
 	log.Println("")
 	log.Println("Cache Management:")
 	log.Println("  GET    /admin/cache/stats                            - Get cache statistics")
 	log.Println("  POST   /admin/cache/warm                             - Warm cache with configurations")
 	log.Println("  DELETE /admin/cache                                  - Clear all cache")
+	log.Println("")
+	log.Println("SSE Management:")
+	log.Println("  GET    /admin/sse/stats                              - Get SSE statistics and connected clients")
 	log.Println("")
 	log.Println("Management API:")
 	log.Println("  GET    /admin/orgs                                   - List organizations")
