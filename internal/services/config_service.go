@@ -64,9 +64,10 @@ func (s *ConfigService) GetConfiguration(orgSlug, appSlug, envSlug string) (*mod
 		UpdatedAt:    configVersion.CreatedAt,
 	}
 
-	// Cache the response
+	// Cache the response with appropriate TTL
 	if s.cache != nil {
 		cacheKey := cache.GenerateConfigKey(orgSlug, appSlug, envSlug)
+		// Use default TTL for configuration data
 		if err := s.cache.SetConfig(cacheKey, response); err != nil {
 			log.Printf("Failed to cache config: %v", err)
 		} else {
@@ -179,20 +180,8 @@ func (s *ConfigService) UpdateConfiguration(orgSlug, appSlug, envSlug string, re
 	}
 
 	// Invalidate cache for this configuration
-	if s.cache != nil {
-		// Invalidate both regular and API key caches
-		configKey := cache.GenerateConfigKey(env.Application.Organization.Slug, env.Application.Slug, env.Slug)
-		if err := s.cache.DeleteConfig(configKey); err != nil {
-			log.Printf("Failed to invalidate config cache: %v", err)
-		}
-
-		// Invalidate API key cache pattern for this environment
-		pattern := fmt.Sprintf("config:api:*:%s", env.Slug)
-		if err := s.cache.InvalidatePattern(pattern); err != nil {
-			log.Printf("Failed to invalidate API key cache pattern: %v", err)
-		}
-
-		log.Printf("Invalidated cache for config update: %s", configKey)
+	if err := s.InvalidateEnvironmentCache(env.Application.Organization.Slug, env.Application.Slug, env.Slug); err != nil {
+		log.Printf("Failed to invalidate environment cache: %v", err)
 	}
 
 	// Build the response
@@ -247,20 +236,8 @@ func (s *ConfigService) RollbackConfiguration(orgSlug, appSlug, envSlug string, 
 	}
 
 	// Invalidate cache for this configuration
-	if s.cache != nil {
-		// Invalidate both regular and API key caches
-		configKey := cache.GenerateConfigKey(env.Application.Organization.Slug, env.Application.Slug, env.Slug)
-		if err := s.cache.DeleteConfig(configKey); err != nil {
-			log.Printf("Failed to invalidate config cache: %v", err)
-		}
-
-		// Invalidate API key cache pattern for this environment
-		pattern := fmt.Sprintf("config:api:*:%s", env.Slug)
-		if err := s.cache.InvalidatePattern(pattern); err != nil {
-			log.Printf("Failed to invalidate API key cache pattern: %v", err)
-		}
-
-		log.Printf("Invalidated cache for config rollback: %s", configKey)
+	if err := s.InvalidateEnvironmentCache(env.Application.Organization.Slug, env.Application.Slug, env.Slug); err != nil {
+		log.Printf("Failed to invalidate environment cache: %v", err)
 	}
 
 	// Build the response
@@ -620,6 +597,145 @@ func (s *ConfigService) DeleteEnvironment(orgSlug, appSlug, envSlug string) erro
 		return fmt.Errorf("failed to delete environment: %w", err)
 	}
 
+	return nil
+}
+
+// Cache Management Methods
+
+// WarmCache preloads frequently accessed configurations into cache
+func (s *ConfigService) WarmCache() error {
+	if s.cache == nil {
+		return fmt.Errorf("cache is not enabled")
+	}
+
+	log.Println("Starting cache warming...")
+
+	// Get all environments with their active configurations
+	// This is a simplified approach - in production you might want to be more selective
+	params := models.PaginationParams{Page: 1, PageSize: 100}
+
+	// Get organizations
+	orgs, _, err := s.repos.Organizations.List(params)
+	if err != nil {
+		return fmt.Errorf("failed to get organizations for cache warming: %w", err)
+	}
+
+	configs := make(map[string]interface{})
+
+	for _, org := range orgs {
+		// Get applications for this organization
+		apps, _, err := s.repos.Applications.ListByOrganization(org.ID, params)
+		if err != nil {
+			log.Printf("Failed to get applications for org %s: %v", org.Slug, err)
+			continue
+		}
+
+		for _, app := range apps {
+			// Get environments for this application
+			envs, _, err := s.repos.Environments.ListByApplication(app.ID, params)
+			if err != nil {
+				log.Printf("Failed to get environments for app %s: %v", app.Slug, err)
+				continue
+			}
+
+			for _, env := range envs {
+				// Get active configuration for this environment
+				configVersion, err := s.repos.ConfigVersions.GetActiveByEnvironment(env.ID)
+				if err != nil {
+					log.Printf("No active config for env %s/%s/%s: %v", org.Slug, app.Slug, env.Slug, err)
+					continue
+				}
+
+				// Build cache entry
+				response := &models.ConfigResponse{
+					Organization: org.Slug,
+					Application:  app.Slug,
+					Environment:  env.Slug,
+					Version:      configVersion.Version,
+					Config:       configVersion.ConfigJSON,
+					UpdatedAt:    configVersion.CreatedAt,
+				}
+
+				// Add to cache warming batch
+				cacheKey := cache.GenerateConfigKey(org.Slug, app.Slug, env.Slug)
+				configs[cacheKey] = response
+
+				// Also add API key cache entry if available
+				if app.APIKey != "" {
+					apiCacheKey := cache.GenerateAPIKeyConfigKey(app.APIKey, env.Slug)
+					configs[apiCacheKey] = response
+				}
+			}
+		}
+	}
+
+	if len(configs) == 0 {
+		log.Println("No configurations found for cache warming")
+		return nil
+	}
+
+	// Warm the cache
+	if err := s.cache.WarmCache(configs); err != nil {
+		return fmt.Errorf("failed to warm cache: %w", err)
+	}
+
+	log.Printf("Cache warming completed: %d configurations loaded", len(configs))
+	return nil
+}
+
+// GetCacheStats returns cache statistics
+func (s *ConfigService) GetCacheStats() (map[string]interface{}, error) {
+	if s.cache == nil {
+		return map[string]interface{}{
+			"enabled": false,
+			"message": "Cache is not enabled",
+		}, nil
+	}
+
+	info, err := s.cache.GetCacheInfo()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache stats: %w", err)
+	}
+
+	info["enabled"] = true
+	return info, nil
+}
+
+// ClearCache clears all cached configurations
+func (s *ConfigService) ClearCache() error {
+	if s.cache == nil {
+		return fmt.Errorf("cache is not enabled")
+	}
+
+	if err := s.cache.InvalidatePattern("config:*"); err != nil {
+		return fmt.Errorf("failed to clear cache: %w", err)
+	}
+
+	// Reset statistics
+	s.cache.ResetStats()
+	log.Println("Cache cleared successfully")
+	return nil
+}
+
+// InvalidateEnvironmentCache invalidates cache for a specific environment
+func (s *ConfigService) InvalidateEnvironmentCache(orgSlug, appSlug, envSlug string) error {
+	if s.cache == nil {
+		return nil // No cache to invalidate
+	}
+
+	// Invalidate regular config cache
+	configKey := cache.GenerateConfigKey(orgSlug, appSlug, envSlug)
+	if err := s.cache.DeleteConfig(configKey); err != nil {
+		log.Printf("Failed to invalidate config cache: %v", err)
+	}
+
+	// Invalidate API key cache pattern for this environment
+	pattern := fmt.Sprintf("config:api:*:%s", envSlug)
+	if err := s.cache.InvalidatePattern(pattern); err != nil {
+		log.Printf("Failed to invalidate API key cache pattern: %v", err)
+	}
+
+	log.Printf("Invalidated cache for environment: %s/%s/%s", orgSlug, appSlug, envSlug)
 	return nil
 }
 

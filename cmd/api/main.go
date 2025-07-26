@@ -55,6 +55,16 @@ func main() {
 	// Initialize services
 	configService := services.NewConfigService(repos, redisClient)
 
+	// Warm cache on startup if Redis is available
+	if redisClient != nil {
+		go func() {
+			log.Println("Starting background cache warming...")
+			if err := configService.WarmCache(); err != nil {
+				log.Printf("Cache warming failed: %v", err)
+			}
+		}()
+	}
+
 	// Initialize handlers
 	configHandler := handlers.NewConfigHandler(configService)
 	managementHandler := handlers.NewManagementHandler(configService)
@@ -92,6 +102,11 @@ func main() {
 	adminAPI := r.Group("/admin")
 	adminAPI.Use(authMiddleware.OptionalAPIKeyAuth())
 	{
+		// Cache management
+		adminAPI.GET("/cache/stats", managementHandler.GetCacheStats)
+		adminAPI.POST("/cache/warm", managementHandler.WarmCache)
+		adminAPI.DELETE("/cache", managementHandler.ClearCache)
+
 		// Organization management
 		adminAPI.GET("/orgs", managementHandler.ListOrganizations)
 		adminAPI.POST("/orgs", managementHandler.CreateOrganization)
@@ -137,6 +152,11 @@ func main() {
 	log.Println("  GET  /health                                         - Health check")
 	log.Println("  GET  /config/:org/:app/:env                          - Get config (public)")
 	log.Println("  GET  /api/config/:env                                - Get config (API key required)")
+	log.Println("")
+	log.Println("Cache Management:")
+	log.Println("  GET    /admin/cache/stats                            - Get cache statistics")
+	log.Println("  POST   /admin/cache/warm                             - Warm cache with configurations")
+	log.Println("  DELETE /admin/cache                                  - Clear all cache")
 	log.Println("")
 	log.Println("Management API:")
 	log.Println("  GET    /admin/orgs                                   - List organizations")

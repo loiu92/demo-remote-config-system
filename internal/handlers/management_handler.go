@@ -463,3 +463,59 @@ func (h *ManagementHandler) DeleteEnvironment(c *gin.Context) {
 
 	c.JSON(http.StatusNoContent, nil)
 }
+
+// Cache Management Endpoints
+
+// GetCacheStats handles GET /admin/cache/stats
+func (h *ManagementHandler) GetCacheStats(c *gin.Context) {
+	stats, err := h.configService.GetCacheStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:     "cache_stats_failed",
+			Message:   err.Error(),
+			Timestamp: time.Now(),
+			Path:      c.Request.URL.Path,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
+// WarmCache handles POST /admin/cache/warm
+func (h *ManagementHandler) WarmCache(c *gin.Context) {
+	err := h.configService.WarmCache()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:     "cache_warm_failed",
+			Message:   err.Error(),
+			Timestamp: time.Now(),
+			Path:      c.Request.URL.Path,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, map[string]interface{}{
+		"message":   "Cache warming completed successfully",
+		"timestamp": time.Now(),
+	})
+}
+
+// ClearCache handles DELETE /admin/cache
+func (h *ManagementHandler) ClearCache(c *gin.Context) {
+	err := h.configService.ClearCache()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
+			Error:     "cache_clear_failed",
+			Message:   err.Error(),
+			Timestamp: time.Now(),
+			Path:      c.Request.URL.Path,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, map[string]interface{}{
+		"message":   "Cache cleared successfully",
+		"timestamp": time.Now(),
+	})
+}

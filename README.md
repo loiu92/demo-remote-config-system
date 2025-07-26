@@ -61,6 +61,11 @@ make down
 
 ### Management API (admin)
 
+#### Cache Management
+- `GET /admin/cache/stats` - Get cache statistics and performance metrics
+- `POST /admin/cache/warm` - Preload frequently accessed configurations into cache
+- `DELETE /admin/cache` - Clear all cached configurations
+
 #### Organization Management
 - `GET /admin/orgs` - List all organizations
 - `POST /admin/orgs` - Create a new organization
@@ -144,6 +149,49 @@ curl http://localhost:8080/config/mycompany/webapp/prod
 curl -H "X-API-Key: your-api-key" \
   http://localhost:8080/api/config/prod
 ```
+
+#### Cache Management
+```bash
+# Get cache statistics
+curl http://localhost:8080/admin/cache/stats
+
+# Warm cache with all configurations
+curl -X POST http://localhost:8080/admin/cache/warm
+
+# Clear all cache
+curl -X DELETE http://localhost:8080/admin/cache
+```
+
+## Configuration
+
+### Redis Caching Configuration
+
+The system supports advanced Redis caching with the following environment variables:
+
+```bash
+# Redis connection
+REDIS_HOST=localhost          # Redis host (default: localhost)
+REDIS_PORT=6379              # Redis port (default: 6379)
+REDIS_PASSWORD=              # Redis password (optional)
+REDIS_DB=0                   # Redis database number (default: 0)
+
+# Cache TTL settings
+CACHE_TTL=300                # Default TTL in seconds (default: 300 = 5 minutes)
+CACHE_SHORT_TTL=60           # Short TTL for frequently changing data (default: 60 = 1 minute)
+CACHE_LONG_TTL=3600          # Long TTL for rarely changing data (default: 3600 = 1 hour)
+
+# Cache features
+CACHE_ENABLE_COMPRESSION=true # Enable compression for large configurations (default: false)
+```
+
+### Cache Features
+
+- **Multi-tier TTL Strategy**: Different TTL values for different types of data
+- **Automatic Compression**: Large configurations (>1KB) are automatically compressed
+- **Cache Statistics**: Real-time metrics on cache hits, misses, and performance
+- **Cache Warming**: Preload frequently accessed configurations on startup
+- **Pattern-based Invalidation**: Efficient cache invalidation when configurations change
+- **Fallback Support**: System continues to work even if Redis is unavailable
 
 ## Project Structure
 
