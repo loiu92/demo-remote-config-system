@@ -52,6 +52,25 @@ Stop all services:
 make down
 ```
 
+## Web Dashboard
+
+The system includes a comprehensive web-based admin dashboard for managing configurations and monitoring system health.
+
+### Dashboard Features
+
+- **Organization Management**: Create, view, edit, and delete organizations
+- **Application Management**: Manage applications within organizations
+- **Environment Management**: Configure environments for applications
+- **Configuration Editor**: Visual JSON editor for configuration management
+- **Real-time Monitoring**: Live statistics and system health monitoring
+- **Cache Management**: Monitor and manage Redis cache performance
+- **SSE Monitoring**: Track real-time connections and message broadcasting
+
+### Access Dashboard
+
+- **Dashboard URL**: `http://localhost:8080/dashboard`
+- **Root URL**: `http://localhost:8080/` (redirects to dashboard)
+
 ## API Endpoints
 
 ### Configuration API (for applications)
@@ -223,6 +242,53 @@ eventSource.onerror = function(event) {
     console.error('SSE connection error:', event);
 };
 ```
+
+### Dashboard Usage
+
+#### Getting Started with the Dashboard
+
+1. **Access the Dashboard**:
+   ```
+   http://localhost:8080/dashboard
+   ```
+
+2. **Create Your First Organization**:
+   - Click "Organizations" in the sidebar
+   - Click "Create Organization"
+   - Fill in the organization name and slug
+   - Click "Create Organization"
+
+3. **Add an Application**:
+   - Click "Applications" in the sidebar
+   - Click "Create Application"
+   - Select the organization
+   - Fill in application details
+   - Click "Create Application"
+
+4. **Set Up an Environment**:
+   - Click "Environments" in the sidebar
+   - Click "Create Environment"
+   - Select the application
+   - Fill in environment details
+   - Click "Create Environment"
+
+5. **Configure Your Application**:
+   - Click "Configurations" in the sidebar
+   - Select an environment from the dropdown
+   - Click "Update Configuration"
+   - Enter your JSON configuration
+   - Click "Update Configuration"
+
+#### Dashboard Sections
+
+- **Dashboard**: Overview with system statistics and recent activity
+- **Organizations**: Manage organizations (create, edit, delete)
+- **Applications**: Manage applications within organizations
+- **Environments**: Manage environments within applications
+- **Configurations**: View and edit JSON configurations
+- **Monitoring**: System health and performance metrics
+- **Cache**: Redis cache statistics and management
+- **Real-time**: SSE connection monitoring and statistics
 
 ## Configuration
 

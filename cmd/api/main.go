@@ -95,6 +95,12 @@ func main() {
 	r.GET("/demo/sse", func(c *gin.Context) {
 		c.File("./web/static/sse-demo.html")
 	})
+	r.GET("/dashboard", func(c *gin.Context) {
+		c.File("./web/static/dashboard.html")
+	})
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(302, "/dashboard")
+	})
 
 	// Public configuration endpoints (no authentication required)
 	publicAPI := r.Group("/config")
@@ -173,6 +179,8 @@ func main() {
 
 	log.Printf("Starting server on port %s", port)
 	log.Println("Available endpoints:")
+	log.Println("  GET  /                                               - Redirect to dashboard")
+	log.Println("  GET  /dashboard                                      - Admin dashboard")
 	log.Println("  GET  /health                                         - Health check")
 	log.Println("  GET  /demo/sse                                       - SSE demo page")
 	log.Println("  GET  /config/:org/:app/:env                          - Get config (public)")
