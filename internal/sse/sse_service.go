@@ -166,7 +166,6 @@ func (s *SSEService) unregisterClient(client *Client) {
 	s.stats.LastActivity = time.Now()
 	s.statsMux.Unlock()
 }
-}
 
 // broadcastMessage sends a message to all matching clients
 func (s *SSEService) broadcastMessage(message BroadcastMessage) {
