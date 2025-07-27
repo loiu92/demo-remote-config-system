@@ -21,7 +21,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o api ./cmd/api
 # Final stage
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates tzdata
+# Install all packages as root
+RUN apk --no-cache add ca-certificates tzdata wget
+
 WORKDIR /app
 
 # Copy the binary from builder stage
@@ -35,9 +37,6 @@ USER appuser
 
 # Expose port
 EXPOSE 8080
-
-# Install wget for health checks
-RUN apk --no-cache add wget
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
