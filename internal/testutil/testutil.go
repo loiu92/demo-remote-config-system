@@ -46,7 +46,7 @@ type TestSuite struct {
 func SetupTestDatabase(t *testing.T) *TestDatabase {
 	ctx := context.Background()
 
-	// Create PostgreSQL container
+	// Create PostgreSQL container with longer timeout for CI
 	postgresContainer, err := postgres.RunContainer(ctx,
 		testcontainers.WithImage("postgres:15-alpine"),
 		postgres.WithDatabase("test_remote_config"),
@@ -55,7 +55,7 @@ func SetupTestDatabase(t *testing.T) *TestDatabase {
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second)),
+				WithStartupTimeout(60*time.Second)),
 	)
 	require.NoError(t, err)
 
@@ -94,10 +94,12 @@ func SetupTestDatabase(t *testing.T) *TestDatabase {
 func SetupTestRedis(t *testing.T) *TestRedis {
 	ctx := context.Background()
 
-	// Create Redis container
+	// Create Redis container with timeout for CI
 	redisContainer, err := redis.RunContainer(ctx,
 		testcontainers.WithImage("redis:7-alpine"),
-		testcontainers.WithWaitStrategy(wait.ForLog("Ready to accept connections")),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("Ready to accept connections").
+				WithStartupTimeout(30*time.Second)),
 	)
 	require.NoError(t, err)
 

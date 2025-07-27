@@ -36,18 +36,19 @@ type Client struct {
 type SSEService struct {
 	clients    map[string]*Client
 	clientsMux sync.RWMutex
-	
+
 	// Channel for broadcasting events to all clients
 	broadcast chan BroadcastMessage
-	
+
 	// Channel for registering new clients
 	register chan *Client
-	
+
 	// Channel for unregistering clients
 	unregister chan *Client
-	
+
 	// Statistics
-	stats SSEStats
+	stats    SSEStats
+	statsMux sync.RWMutex
 }
 
 // BroadcastMessage represents a message to be broadcasted
@@ -109,14 +110,18 @@ func (s *SSEService) run() {
 // registerClient adds a new client to the service
 func (s *SSEService) registerClient(client *Client) {
 	s.clientsMux.Lock()
-	defer s.clientsMux.Unlock()
-
 	s.clients[client.ID] = client
-	s.stats.TotalConnections++
-	s.stats.ActiveConnections = len(s.clients)
-	s.stats.LastActivity = time.Now()
+	activeConnections := len(s.clients)
+	s.clientsMux.Unlock()
 
-	log.Printf("SSE client registered: %s (%s/%s/%s)", 
+	// Update stats with proper locking
+	s.statsMux.Lock()
+	s.stats.TotalConnections++
+	s.stats.ActiveConnections = activeConnections
+	s.stats.LastActivity = time.Now()
+	s.statsMux.Unlock()
+
+	log.Printf("SSE client registered: %s (%s/%s/%s)",
 		client.ID, client.Organization, client.Application, client.Environment)
 
 	// Send welcome message
@@ -131,7 +136,9 @@ func (s *SSEService) registerClient(client *Client) {
 
 	select {
 	case client.Channel <- welcomeMsg:
+		s.statsMux.Lock()
 		s.stats.MessagesSent++
+		s.statsMux.Unlock()
 	default:
 		log.Printf("Failed to send welcome message to client %s", client.ID)
 	}
@@ -140,18 +147,25 @@ func (s *SSEService) registerClient(client *Client) {
 // unregisterClient removes a client from the service
 func (s *SSEService) unregisterClient(client *Client) {
 	s.clientsMux.Lock()
-	defer s.clientsMux.Unlock()
-
+	var activeConnections int
 	if _, exists := s.clients[client.ID]; exists {
 		delete(s.clients, client.ID)
 		close(client.Channel)
 		client.Cancel()
-		s.stats.ConnectionsDropped++
-		s.stats.ActiveConnections = len(s.clients)
-		s.stats.LastActivity = time.Now()
-
+		activeConnections = len(s.clients)
 		log.Printf("SSE client unregistered: %s", client.ID)
+	} else {
+		activeConnections = len(s.clients)
 	}
+	s.clientsMux.Unlock()
+
+	// Update stats with proper locking
+	s.statsMux.Lock()
+	s.stats.ConnectionsDropped++
+	s.stats.ActiveConnections = activeConnections
+	s.stats.LastActivity = time.Now()
+	s.statsMux.Unlock()
+}
 }
 
 // broadcastMessage sends a message to all matching clients
@@ -166,7 +180,6 @@ func (s *SSEService) broadcastMessage(message BroadcastMessage) {
 			select {
 			case client.Channel <- message.Message:
 				sentCount++
-				s.stats.MessagesSent++
 			default:
 				// Client channel is full, remove the client
 				log.Printf("Client %s channel full, removing", client.ID)
@@ -178,8 +191,13 @@ func (s *SSEService) broadcastMessage(message BroadcastMessage) {
 	}
 
 	if sentCount > 0 {
+		// Update stats with proper locking
+		s.statsMux.Lock()
+		s.stats.MessagesSent += int64(sentCount)
 		s.stats.LastActivity = time.Now()
-		log.Printf("Broadcasted message to %d clients for %s/%s/%s", 
+		s.statsMux.Unlock()
+
+		log.Printf("Broadcasted message to %d clients for %s/%s/%s",
 			sentCount, message.Organization, message.Application, message.Environment)
 	}
 }
@@ -246,10 +264,14 @@ func (s *SSEService) BroadcastCustomEvent(org, app, env, eventType string, data 
 // GetStats returns current SSE service statistics
 func (s *SSEService) GetStats() SSEStats {
 	s.clientsMux.RLock()
-	defer s.clientsMux.RUnlock()
+	activeConnections := len(s.clients)
+	s.clientsMux.RUnlock()
 
+	s.statsMux.RLock()
 	stats := s.stats
-	stats.ActiveConnections = len(s.clients)
+	s.statsMux.RUnlock()
+
+	stats.ActiveConnections = activeConnections
 	return stats
 }
 
@@ -286,10 +308,9 @@ func (s *SSEService) periodicCleanup() {
 // cleanupStaleConnections removes connections that haven't been active
 func (s *SSEService) cleanupStaleConnections() {
 	s.clientsMux.Lock()
-	defer s.clientsMux.Unlock()
-
 	now := time.Now()
 	staleThreshold := 5 * time.Minute
+	droppedCount := 0
 
 	for id, client := range s.clients {
 		if now.Sub(client.LastPing) > staleThreshold {
@@ -297,11 +318,20 @@ func (s *SSEService) cleanupStaleConnections() {
 			delete(s.clients, id)
 			close(client.Channel)
 			client.Cancel()
-			s.stats.ConnectionsDropped++
+			droppedCount++
 		}
 	}
 
-	s.stats.ActiveConnections = len(s.clients)
+	activeConnections := len(s.clients)
+	s.clientsMux.Unlock()
+
+	// Update stats with proper locking
+	if droppedCount > 0 {
+		s.statsMux.Lock()
+		s.stats.ConnectionsDropped += int64(droppedCount)
+		s.stats.ActiveConnections = activeConnections
+		s.statsMux.Unlock()
+	}
 }
 
 // Ping updates the last ping time for a client

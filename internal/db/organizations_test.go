@@ -21,7 +21,7 @@ import (
 func setupTestDB(t *testing.T) (*Repositories, testcontainers.Container) {
 	ctx := context.Background()
 
-	// Create PostgreSQL container
+	// Create PostgreSQL container with longer timeout for CI
 	postgresContainer, err := postgres.RunContainer(ctx,
 		testcontainers.WithImage("postgres:15-alpine"),
 		postgres.WithDatabase("test_remote_config"),
@@ -30,7 +30,7 @@ func setupTestDB(t *testing.T) (*Repositories, testcontainers.Container) {
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second)),
+				WithStartupTimeout(60*time.Second)),
 	)
 	require.NoError(t, err)
 

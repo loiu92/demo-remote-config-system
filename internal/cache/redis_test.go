@@ -19,10 +19,12 @@ import (
 func setupTestRedis(t *testing.T) (*RedisClient, testcontainers.Container) {
 	ctx := context.Background()
 
-	// Create Redis container
+	// Create Redis container with timeout for CI
 	redisContainer, err := redis.RunContainer(ctx,
 		testcontainers.WithImage("redis:7-alpine"),
-		testcontainers.WithWaitStrategy(wait.ForLog("Ready to accept connections")),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("Ready to accept connections").
+				WithStartupTimeout(30*time.Second)),
 	)
 	require.NoError(t, err)
 
