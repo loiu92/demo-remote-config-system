@@ -1,6 +1,9 @@
 # Dashboard and SSE Demo Dockerfile
 FROM nginx:alpine
 
+# Install wget for health checks
+RUN apk --no-cache add wget
+
 # Copy static files
 COPY static/ /usr/share/nginx/html/
 
