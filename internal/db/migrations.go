@@ -2,8 +2,9 @@ package db
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -70,7 +71,7 @@ func (mr *MigrationRunner) GetAppliedMigrations() (map[string]bool, error) {
 
 // LoadMigrations loads all migration files from the migrations directory
 func (mr *MigrationRunner) LoadMigrations() ([]Migration, error) {
-	files, err := ioutil.ReadDir(mr.migrationsDir)
+	files, err := os.ReadDir(mr.migrationsDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read migrations directory: %w", err)
 	}
@@ -86,7 +87,7 @@ func (mr *MigrationRunner) LoadMigrations() ([]Migration, error) {
 		
 		// Read the SQL content
 		sqlPath := filepath.Join(mr.migrationsDir, file.Name())
-		sqlBytes, err := ioutil.ReadFile(sqlPath)
+		sqlBytes, err := os.ReadFile(sqlPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read migration file %s: %w", file.Name(), err)
 		}
