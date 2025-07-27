@@ -2,12 +2,22 @@
 
 # Production commands
 build:
-	docker-compose build
+	docker-compose -f docker-compose.prod.yml build
 
 up:
-	docker-compose up --build -d
+	docker-compose -f docker-compose.prod.yml up --build -d
 
 down:
+	docker-compose -f docker-compose.prod.yml down
+
+# Legacy/Simple production (single service)
+build-simple:
+	docker-compose build
+
+up-simple:
+	docker-compose up --build -d
+
+down-simple:
 	docker-compose down
 
 # Development commands
@@ -30,20 +40,33 @@ dev-stop:
 
 # View logs
 logs:
+	docker-compose -f docker-compose.prod.yml logs -f
+
+logs-simple:
 	docker-compose logs -f
 
-# View logs for specific service
+# View logs for specific service (production)
 logs-api:
-	docker-compose logs -f api
+	docker-compose -f docker-compose.prod.yml logs -f api
+
+logs-demo:
+	docker-compose -f docker-compose.prod.yml logs -f demo-app
+
+logs-dashboard:
+	docker-compose -f docker-compose.prod.yml logs -f dashboard
+
+logs-nginx:
+	docker-compose -f docker-compose.prod.yml logs -f nginx
 
 logs-db:
-	docker-compose logs -f postgres
+	docker-compose -f docker-compose.prod.yml logs -f postgres
 
 logs-redis:
-	docker-compose logs -f redis
+	docker-compose -f docker-compose.prod.yml logs -f redis
 
 # Clean up everything
 clean:
+	docker-compose -f docker-compose.prod.yml down -v
 	docker-compose down -v
 	docker system prune -f
 
@@ -201,4 +224,24 @@ restart-demo:
 db-migrate:
 	docker-compose exec postgres psql -U postgres -d remote_config -f /docker-entrypoint-initdb.d/001_initial.sql
 
+# Demo commands
+demo-setup:
+	@echo "Setting up demo application..."
+	./scripts/setup-demo.sh
 
+demo-data:
+	@echo "Creating demo data..."
+	./scripts/create-demo-data.sh
+
+demo: demo-setup up demo-data
+	@echo "🎉 Demo is ready!"
+	@echo ""
+	@echo "🌐 Access points:"
+	@echo "  Main Demo:     http://localhost/demo"
+	@echo "  Dashboard:     http://localhost/dashboard"
+	@echo "  SSE Demo:      http://localhost/demo/sse"
+	@echo ""
+	@echo "🔧 Direct service access:"
+	@echo "  Demo App:      http://localhost:3000"
+	@echo "  Dashboard:     http://localhost:4000"
+	@echo "  API:           http://localhost:8080 (internal)"

@@ -90,17 +90,19 @@ func main() {
 	// Health check endpoint
 	r.GET("/health", configHandler.HealthCheck)
 
-	// Serve static files and demo pages
-	r.Static("/static", "./web/static")
-	r.GET("/demo/sse", func(c *gin.Context) {
-		c.File("./web/static/sse-demo.html")
-	})
-	r.GET("/dashboard", func(c *gin.Context) {
-		c.File("./web/static/dashboard.html")
-	})
-	r.GET("/", func(c *gin.Context) {
-		c.Redirect(302, "/dashboard")
-	})
+	// Serve static files in development mode
+	if os.Getenv("GIN_MODE") == "debug" {
+		r.Static("/static", "./web/static")
+		r.GET("/dashboard", func(c *gin.Context) {
+			c.File("./web/static/dashboard.html")
+		})
+		r.GET("/demo/sse", func(c *gin.Context) {
+			c.File("./web/static/sse-demo.html")
+		})
+		r.GET("/", func(c *gin.Context) {
+			c.Redirect(302, "/dashboard")
+		})
+	}
 
 	// Public configuration endpoints (no authentication required)
 	publicAPI := r.Group("/config")

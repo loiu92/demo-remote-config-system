@@ -124,23 +124,37 @@ jobs:
     - name: Build Docker image
       run: docker build -t remote-config-system:test .
 
+    - name: Check Docker Compose availability
+      run: |
+        echo "Checking Docker Compose..."
+        docker compose version || docker-compose version || echo "Neither found"
+
     - name: Run Docker tests
       run: |
-        docker-compose -f docker-compose.yml up -d postgres redis
-        sleep 10
-        docker run --rm --network container:$(docker-compose ps -q postgres) \
-          -e DB_HOST=localhost \
+        # Use Docker Compose v2 (available on ubuntu-latest)
+        docker compose -f docker-compose.yml up -d postgres redis
+
+        # Wait for services to be ready
+        echo "Waiting for services to be ready..."
+        sleep 15
+
+        # Check if services are healthy
+        docker compose -f docker-compose.yml ps
+
+        # Run tests in the same network as the services
+        docker run --rm --network remote-config-system_default \
+          -e DB_HOST=postgres \
           -e DB_PORT=5432 \
           -e DB_USER=postgres \
           -e DB_PASSWORD=postgres \
           -e DB_NAME=remote_config \
-          -e REDIS_HOST=localhost \
+          -e REDIS_HOST=redis \
           -e REDIS_PORT=6379 \
           -e GIN_MODE=test \
           remote-config-system:test go test ./...
 
     - name: Cleanup
-      run: docker-compose down
+      run: docker compose -f docker-compose.yml down
 
   benchmark:
     runs-on: ubuntu-latest

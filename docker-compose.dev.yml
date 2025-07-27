@@ -21,6 +21,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - dev-network
 
   # Redis Cache
   redis:
@@ -35,6 +37,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - dev-network
 
   # Development API Application with Go toolchain
   api:
@@ -67,6 +71,27 @@ services:
     # Override default command for development (using basic go run for now)
     command: ["go", "run", "./cmd/api"]
     restart: unless-stopped
+    networks:
+      - dev-network
+
+  # React Demo App (Development with HMR)
+  demo-app:
+    build:
+      context: ./demo-app
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./demo-app:/app
+      - /app/node_modules  # Anonymous volume for node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true  # For file watching in Docker
+      - FAST_REFRESH=true
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - dev-network
 
   # Test runner service (separate from main API)
   test:
@@ -95,6 +120,10 @@ services:
     profiles:
       - test
     command: ["go", "test", "./..."]
+
+networks:
+  dev-network:
+    driver: bridge
 
 volumes:
   postgres_dev_data:

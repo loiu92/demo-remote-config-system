@@ -17,7 +17,7 @@ A real-time configuration management system built with Go, PostgreSQL, and Redis
 
 - Docker and Docker Compose
 
-### Running the System
+### Quick Start with Demo
 
 1. Clone the repository:
 ```bash
@@ -25,15 +25,99 @@ git clone <repository-url>
 cd remote-config-system
 ```
 
-2. Start all services:
+2. Set up and run the complete demo:
+```bash
+make demo
+```
+
+3. Access the services:
+- **ShopFlow Lite Demo**: http://localhost/demo
+- **Web Dashboard**: http://localhost/dashboard
+- **SSE Demo**: http://localhost/demo/sse
+
+### Manual Setup
+
+If you prefer to set up manually:
+
+1. Start the services:
 ```bash
 make up
 ```
 
-3. Access the services:
-- API: http://localhost:8080
-- Demo App: http://localhost:3000
-- Web Dashboard: http://localhost:8080/admin
+2. Set up demo data:
+```bash
+make demo-data
+```
+
+## 🏗️ Architecture
+
+The system uses a **multi-service Docker architecture** for production:
+
+### Services
+- **Nginx Reverse Proxy** (Port 80) - Main entry point, routes traffic
+- **Go API Service** (Internal) - Core configuration API and business logic
+- **React Demo App** (Port 3000) - ShopFlow Lite e-commerce demo
+- **Dashboard Service** (Port 4000) - Admin dashboard and SSE demo pages
+- **PostgreSQL** (Port 5432) - Primary database
+- **Redis** (Port 6379) - Configuration caching
+
+### Development vs Production
+
+**Development** (`docker-compose.dev.yml`):
+- Single Go service with hot reloading
+- Direct port access for debugging
+- Volume mounts for live code changes
+
+**Production** (`docker-compose.prod.yml`):
+- Multi-service architecture
+- Nginx reverse proxy with load balancing
+- Optimized Docker images
+- Service isolation and security
+
+## 🎮 ShopFlow Lite Demo
+
+The ShopFlow Lite demo showcases real-time configuration management in action. It's a single-page e-commerce application that demonstrates:
+
+### Features
+- **Real-time Updates**: Configuration changes are pushed instantly via Server-Sent Events
+- **Theme Switching**: Light, dark, and colorful themes
+- **Feature Toggles**: Show/hide prices, ratings, and other UI elements
+- **Layout Control**: Dynamic grid layouts (1-4 columns)
+- **Countdown Timers**: Promotion timers with real-time updates
+- **Live Configuration Panel**: See current config and raw JSON
+
+### Demo Scenarios
+
+Try these commands while the demo is running to see real-time updates:
+
+**Change theme to dark:**
+```bash
+curl -X PUT http://localhost:8080/admin/orgs/demo/apps/shopflow/envs/production/config \
+     -H "Content-Type: application/json" \
+     -d '{"config": {"theme": "dark"}}'
+```
+
+**Hide prices:**
+```bash
+curl -X PUT http://localhost:8080/admin/orgs/demo/apps/shopflow/envs/production/config \
+     -H "Content-Type: application/json" \
+     -d '{"config": {"showPrices": false}}'
+```
+
+**Start a 1-hour flash sale:**
+```bash
+FLASH_SALE_END=$(date -d "+1 hour" -Iseconds)
+curl -X PUT http://localhost:8080/admin/orgs/demo/apps/shopflow/envs/production/config \
+     -H "Content-Type: application/json" \
+     -d "{\"config\": {\"promotionEndTime\": \"$FLASH_SALE_END\", \"promotionTitle\": \"⚡ Flash Sale - 1 Hour Only!\"}}"
+```
+
+**Change to single-column layout:**
+```bash
+curl -X PUT http://localhost:8080/admin/orgs/demo/apps/shopflow/envs/production/config \
+     -H "Content-Type: application/json" \
+     -d '{"config": {"maxItemsPerRow": 1}}'
+```
 
 ### Development
 
