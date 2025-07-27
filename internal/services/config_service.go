@@ -313,6 +313,33 @@ func (s *ConfigService) GetConfigurationHistory(orgSlug, appSlug, envSlug string
 	return &response, nil
 }
 
+// GetConfigurationVersion retrieves a specific version of configuration for an environment
+func (s *ConfigService) GetConfigurationVersion(orgSlug, appSlug, envSlug string, version int) (*models.ConfigResponse, error) {
+	// Get the environment
+	env, err := s.repos.Environments.GetBySlug(orgSlug, appSlug, envSlug)
+	if err != nil {
+		return nil, fmt.Errorf("environment not found: %w", err)
+	}
+
+	// Get the specific configuration version
+	configVersion, err := s.repos.ConfigVersions.GetByVersion(env.ID, version)
+	if err != nil {
+		return nil, fmt.Errorf("configuration version not found: %w", err)
+	}
+
+	// Build the response
+	response := &models.ConfigResponse{
+		Organization: env.Application.Organization.Slug,
+		Application:  env.Application.Slug,
+		Environment:  env.Slug,
+		Version:      configVersion.Version,
+		Config:       configVersion.ConfigJSON,
+		UpdatedAt:    configVersion.CreatedAt,
+	}
+
+	return response, nil
+}
+
 // GetConfigurationChanges retrieves the change history for an environment
 func (s *ConfigService) GetConfigurationChanges(orgSlug, appSlug, envSlug string, params models.PaginationParams) (*models.PaginatedResponse, error) {
 	// Get the environment

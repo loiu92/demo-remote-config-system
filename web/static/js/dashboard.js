@@ -75,15 +75,31 @@ class Dashboard {
 
     async loadInitialData() {
         try {
+            this.showLoadingState('Loading dashboard data...');
+
+            // Load organizations first (required for other data)
+            await this.loadOrganizations();
+
+            // Then load applications and environments sequentially
+            if (this.data.organizations.length > 0) {
+                await this.loadApplications();
+                if (this.data.applications.length > 0) {
+                    await this.loadEnvironments();
+                }
+            }
+
+            // Load stats in parallel (independent of org data)
             await Promise.all([
-                this.loadOrganizations(),
                 this.loadCacheStats(),
                 this.loadSSEStats()
             ]);
+
             this.updateDashboardStats();
+            this.hideLoadingState();
         } catch (error) {
             console.error('Failed to load initial data:', error);
-            this.showError('Failed to load initial data');
+            this.hideLoadingState();
+            this.showError('Failed to load initial data. Please refresh the page.');
         }
     }
 
@@ -145,20 +161,32 @@ class Dashboard {
 
     async loadApplications() {
         try {
+            // Ensure organizations are loaded first
+            if (this.data.organizations.length === 0) {
+                console.warn('No organizations loaded, skipping applications');
+                this.data.applications = [];
+                return;
+            }
+
             // Load applications for all organizations
             const apps = [];
-            for (const org of this.data.organizations) {
+            const loadPromises = this.data.organizations.map(async (org) => {
                 try {
                     const response = await API.get(`/admin/orgs/${org.slug}/apps`);
                     const orgApps = (response.data || []).map(app => ({
                         ...app,
                         organization: org
                     }));
-                    apps.push(...orgApps);
+                    return orgApps;
                 } catch (error) {
                     console.error(`Failed to load apps for org ${org.slug}:`, error);
+                    return [];
                 }
-            }
+            });
+
+            const results = await Promise.all(loadPromises);
+            results.forEach(orgApps => apps.push(...orgApps));
+
             this.data.applications = apps;
             this.updateAppFilter();
         } catch (error) {
@@ -169,9 +197,16 @@ class Dashboard {
 
     async loadEnvironments() {
         try {
+            // Ensure applications are loaded first
+            if (this.data.applications.length === 0) {
+                console.warn('No applications loaded, skipping environments');
+                this.data.environments = [];
+                return;
+            }
+
             // Load environments for all applications
             const envs = [];
-            for (const app of this.data.applications) {
+            const loadPromises = this.data.applications.map(async (app) => {
                 try {
                     const response = await API.get(`/admin/orgs/${app.organization.slug}/apps/${app.slug}/envs`);
                     const appEnvs = (response.data || []).map(env => ({
@@ -179,11 +214,16 @@ class Dashboard {
                         application: app,
                         organization: app.organization
                     }));
-                    envs.push(...appEnvs);
+                    return appEnvs;
                 } catch (error) {
                     console.error(`Failed to load envs for app ${app.slug}:`, error);
+                    return [];
                 }
-            }
+            });
+
+            const results = await Promise.all(loadPromises);
+            results.forEach(appEnvs => envs.push(...appEnvs));
+
             this.data.environments = envs;
             this.updateEnvFilter();
         } catch (error) {
@@ -436,9 +476,23 @@ class Dashboard {
                                 <h4>${config.organization}/${config.application}/${config.environment}</h4>
                                 <small>Version ${config.version} • Updated ${APIUtils.formatDate(config.updated_at)}</small>
                             </div>
+                            <div class="config-actions">
+                                <button class="btn btn-secondary" onclick="showConfigHistory('${orgSlug}', '${appSlug}', '${envSlug}')">
+                                    <i class="fas fa-history"></i> History
+                                </button>
+                            </div>
+                        </div>
+                        <div class="config-tabs">
+                            <button class="tab-btn active" onclick="switchConfigTab('current')">Current</button>
+                            <button class="tab-btn" onclick="switchConfigTab('history')">History</button>
                         </div>
                         <div class="config-content">
-                            <pre class="config-json">${APIUtils.formatJSON(config.config)}</pre>
+                            <div id="current-config" class="tab-content active">
+                                <pre class="config-json">${APIUtils.formatJSON(config.config)}</pre>
+                            </div>
+                            <div id="history-config" class="tab-content">
+                                <div class="loading">Loading history...</div>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -534,30 +588,113 @@ class Dashboard {
 
     async refreshCurrentSection() {
         const refreshBtn = document.querySelector('.header .btn-primary');
+        if (!refreshBtn) return;
+
         const originalText = refreshBtn.innerHTML;
-        
         refreshBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Refreshing...';
         refreshBtn.disabled = true;
-        
+
         try {
-            await this.loadSectionData(this.currentSection);
+            // For dashboard section, reload all data sequentially
+            if (this.currentSection === 'dashboard') {
+                await this.loadInitialData();
+            } else {
+                await this.loadSectionData(this.currentSection);
+            }
+            this.showSuccess('Data refreshed successfully');
         } catch (error) {
             console.error('Refresh failed:', error);
-            this.showError('Failed to refresh data');
+            this.showError('Failed to refresh data: ' + (error.message || 'Unknown error'));
         } finally {
             refreshBtn.innerHTML = originalText;
             refreshBtn.disabled = false;
         }
     }
 
+    showLoadingState(message = 'Loading...') {
+        let loadingDiv = document.getElementById('loading-overlay');
+        if (!loadingDiv) {
+            loadingDiv = document.createElement('div');
+            loadingDiv.id = 'loading-overlay';
+            loadingDiv.className = 'loading-overlay';
+            loadingDiv.innerHTML = `
+                <div class="loading-content">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-message">${message}</div>
+                </div>
+            `;
+            document.body.appendChild(loadingDiv);
+        } else {
+            loadingDiv.querySelector('.loading-message').textContent = message;
+        }
+        loadingDiv.style.display = 'flex';
+    }
+
+    hideLoadingState() {
+        const loadingDiv = document.getElementById('loading-overlay');
+        if (loadingDiv) {
+            loadingDiv.style.display = 'none';
+        }
+    }
+
     showError(message) {
-        // Simple error notification - could be enhanced with a proper notification system
-        alert(`Error: ${message}`);
+        console.error('Dashboard Error:', message);
+
+        // Create or update error notification
+        let errorDiv = document.getElementById('error-notification');
+        if (!errorDiv) {
+            errorDiv = document.createElement('div');
+            errorDiv.id = 'error-notification';
+            errorDiv.className = 'error-notification';
+            document.body.appendChild(errorDiv);
+        }
+
+        errorDiv.innerHTML = `
+            <div class="error-content">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>${message}</span>
+                <button onclick="this.parentElement.parentElement.remove()" class="close-btn">×</button>
+            </div>
+        `;
+
+        errorDiv.style.display = 'block';
+
+        // Auto-hide after 8 seconds
+        setTimeout(() => {
+            if (errorDiv && errorDiv.parentNode) {
+                errorDiv.remove();
+            }
+        }, 8000);
     }
 
     showSuccess(message) {
-        // Simple success notification - could be enhanced with a proper notification system
-        alert(`Success: ${message}`);
+        console.log('Dashboard Success:', message);
+
+        // Create or update success notification
+        let successDiv = document.getElementById('success-notification');
+        if (!successDiv) {
+            successDiv = document.createElement('div');
+            successDiv.id = 'success-notification';
+            successDiv.className = 'success-notification';
+            document.body.appendChild(successDiv);
+        }
+
+        successDiv.innerHTML = `
+            <div class="success-content">
+                <i class="fas fa-check-circle"></i>
+                <span>${message}</span>
+                <button onclick="this.parentElement.parentElement.remove()" class="close-btn">×</button>
+            </div>
+        `;
+
+        successDiv.style.display = 'block';
+
+        // Auto-hide after 4 seconds
+        setTimeout(() => {
+            if (successDiv && successDiv.parentNode) {
+                successDiv.remove();
+            }
+        }, 4000);
     }
 
     async warmCache() {
@@ -854,6 +991,129 @@ window.deleteEnvironment = async (orgSlug, appSlug, envSlug) => {
 // Add some CSS for stat rows and additional components
 const style = document.createElement('style');
 style.textContent = `
+    /* Loading overlay */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+    }
+    .loading-content {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 15px;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .loading-message {
+        color: #333;
+        font-size: 16px;
+        font-weight: 500;
+    }
+
+    /* Error notification */
+    .error-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        max-width: 400px;
+    }
+    .error-content {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+        border-radius: 6px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    .error-content i {
+        color: #dc3545;
+        font-size: 18px;
+    }
+    .error-content .close-btn {
+        background: none;
+        border: none;
+        color: #721c24;
+        font-size: 20px;
+        cursor: pointer;
+        margin-left: auto;
+        padding: 0;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .error-content .close-btn:hover {
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+    }
+
+    /* Success notification */
+    .success-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        max-width: 400px;
+    }
+    .success-content {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+        border-radius: 6px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    .success-content i {
+        color: #28a745;
+        font-size: 18px;
+    }
+    .success-content .close-btn {
+        background: none;
+        border: none;
+        color: #155724;
+        font-size: 20px;
+        cursor: pointer;
+        margin-left: auto;
+        padding: 0;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .success-content .close-btn:hover {
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+    }
+
     .stat-row {
         display: flex;
         justify-content: space-between;
@@ -949,5 +1209,410 @@ style.textContent = `
         font-weight: 600;
         color: #2c3e50;
     }
+    /* Configuration History Styles */
+    .config-tabs {
+        display: flex;
+        border-bottom: 1px solid #dee2e6;
+        margin-bottom: 20px;
+    }
+    .tab-btn {
+        background: none;
+        border: none;
+        padding: 12px 20px;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    .tab-btn.active {
+        color: #007bff;
+        border-bottom-color: #007bff;
+    }
+    .tab-btn:hover {
+        color: #007bff;
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
+    .history-list {
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    .history-item {
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        margin-bottom: 15px;
+        background: white;
+    }
+    .history-item.active {
+        border-color: #28a745;
+        background: #f8fff9;
+    }
+    .history-header {
+        padding: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .version-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .version-number {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+    .active-badge {
+        background: #28a745;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .version-meta {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+    .created-date {
+        color: #6c757d;
+        font-size: 14px;
+    }
+    .created-by {
+        color: #6c757d;
+        font-size: 12px;
+    }
+    .version-actions {
+        display: flex;
+        gap: 8px;
+    }
+    .version-config {
+        padding: 15px;
+        background: #f8f9fa;
+        border-top: 1px solid #dee2e6;
+    }
+    .config-actions {
+        display: flex;
+        gap: 10px;
+    }
+    .warning-text {
+        color: #856404;
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 10px 0;
+    }
+    .warning-text i {
+        margin-right: 8px;
+    }
+    .info-state {
+        text-align: center;
+        padding: 20px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        color: #495057;
+    }
+    .info-state i {
+        color: #17a2b8;
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+    .info-state h4 {
+        color: #2c3e50;
+        margin: 10px 0;
+    }
+    .info-state .note {
+        background: #e7f3ff;
+        border: 1px solid #b8daff;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 15px 0;
+        font-size: 14px;
+    }
+    .info-state .suggestion {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 10px;
+        margin: 15px 0;
+        font-size: 13px;
+        text-align: left;
+    }
+    .info-state code {
+        background: #f1f3f4;
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+    }
+    .error-state {
+        text-align: center;
+        padding: 20px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 6px;
+        color: #721c24;
+    }
+    .error-state i {
+        color: #dc3545;
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+    .error-details {
+        font-size: 14px;
+        color: #6c757d;
+        margin-top: 10px;
+    }
 `;
 document.head.appendChild(style);
+
+// Configuration History and Rollback Functions
+window.switchConfigTab = function(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`.tab-btn[onclick="switchConfigTab('${tab}')"]`).classList.add('active');
+
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById(`${tab}-config`).classList.add('active');
+
+    // Load history if switching to history tab
+    if (tab === 'history') {
+        const envFilter = document.getElementById('env-filter');
+        const selectedEnv = envFilter.value;
+        if (selectedEnv) {
+            const [orgSlug, appSlug, envSlug] = selectedEnv.split('/');
+            loadConfigHistory(orgSlug, appSlug, envSlug);
+        }
+    }
+};
+
+window.showConfigHistory = function(orgSlug, appSlug, envSlug) {
+    switchConfigTab('history');
+    loadConfigHistory(orgSlug, appSlug, envSlug);
+};
+
+async function loadConfigHistory(orgSlug, appSlug, envSlug) {
+    const historyContent = document.getElementById('history-config');
+
+    try {
+        historyContent.innerHTML = '<div class="loading">Loading configuration history...</div>';
+
+        const response = await API.get(`/admin/orgs/${orgSlug}/apps/${appSlug}/envs/${envSlug}/history`);
+        const history = response.data || [];
+
+        // Clear any cached version data
+        window.configVersionCache = {};
+
+        if (history.length === 0) {
+            historyContent.innerHTML = `
+                <div class="no-data">
+                    <i class="fas fa-history"></i>
+                    <p>No configuration history found</p>
+                </div>
+            `;
+            return;
+        }
+
+        historyContent.innerHTML = `
+            <div class="history-list">
+                ${history.map(version => `
+                    <div class="history-item ${version.is_active ? 'active' : ''}">
+                        <div class="history-header">
+                            <div class="version-info">
+                                <span class="version-number">Version ${version.version}</span>
+                                ${version.is_active ? '<span class="active-badge">ACTIVE</span>' : ''}
+                            </div>
+                            <div class="version-meta">
+                                <span class="created-date">${APIUtils.formatDate(version.created_at)}</span>
+                                ${version.created_by ? `<span class="created-by">by ${version.created_by}</span>` : ''}
+                            </div>
+                            <div class="version-actions">
+                                <button class="btn btn-sm btn-secondary" onclick="toggleVersionConfig('${orgSlug}', '${appSlug}', '${envSlug}', ${version.version})">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                                ${!version.is_active ? `
+                                    <button class="btn btn-sm btn-warning" onclick="rollbackToVersion('${orgSlug}', '${appSlug}', '${envSlug}', ${version.version})">
+                                        <i class="fas fa-undo"></i> Rollback
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                        <div id="version-config-${version.version}" class="version-config" style="display: none;">
+                            <div class="config-placeholder">Click "View" to load configuration</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } catch (error) {
+        console.error('Failed to load config history:', error);
+        historyContent.innerHTML = `
+            <div class="error-state">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Failed to load configuration history</p>
+                <button class="btn btn-secondary" onclick="loadConfigHistory('${orgSlug}', '${appSlug}', '${envSlug}')">
+                    <i class="fas fa-retry"></i> Retry
+                </button>
+            </div>
+        `;
+    }
+}
+
+window.toggleVersionConfig = async function(orgSlug, appSlug, envSlug, version) {
+    const configDiv = document.getElementById(`version-config-${version}`);
+    const isVisible = configDiv.style.display !== 'none';
+
+    // Hide all other version configs
+    document.querySelectorAll('.version-config').forEach(div => {
+        div.style.display = 'none';
+    });
+
+    // If it was visible, just hide it
+    if (isVisible) {
+        configDiv.style.display = 'none';
+        return;
+    }
+
+    // Show the config div
+    configDiv.style.display = 'block';
+
+    // Check if we already have the config loaded
+    const existingContent = configDiv.querySelector('.config-json');
+    if (existingContent) {
+        // Already loaded, just show it
+        return;
+    }
+
+    // Check cache first
+    const cacheKey = `${orgSlug}/${appSlug}/${envSlug}/${version}`;
+    if (window.configVersionCache && window.configVersionCache[cacheKey]) {
+        configDiv.innerHTML = `<pre class="config-json">${APIUtils.formatJSON(window.configVersionCache[cacheKey])}</pre>`;
+        return;
+    }
+
+    // Load the configuration data from API
+    try {
+        configDiv.innerHTML = '<div class="loading">Loading configuration...</div>';
+
+        // Use the new dedicated endpoint for getting specific version configuration
+        const configResponse = await API.get(`/admin/orgs/${orgSlug}/apps/${appSlug}/envs/${envSlug}/history/${version}`);
+
+        if (configResponse && configResponse.config) {
+            // Cache the result
+            if (!window.configVersionCache) {
+                window.configVersionCache = {};
+            }
+            window.configVersionCache[cacheKey] = configResponse.config;
+
+            // Display the configuration
+            configDiv.innerHTML = `<pre class="config-json">${APIUtils.formatJSON(configResponse.config)}</pre>`;
+        } else {
+            configDiv.innerHTML = `
+                <div class="error-state">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>No configuration data found for version ${version}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to load version config:', error);
+
+        // Check if it's a 404 (version not found)
+        if (error.response && error.response.status === 404) {
+            configDiv.innerHTML = `
+                <div class="error-state">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Configuration version ${version} not found</p>
+                    <p class="error-details">This version may have been deleted or never existed.</p>
+                </div>
+            `;
+        } else {
+            configDiv.innerHTML = `
+                <div class="error-state">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Failed to load configuration for version ${version}</p>
+                    <button class="btn btn-sm btn-secondary" onclick="toggleVersionConfig('${orgSlug}', '${appSlug}', '${envSlug}', ${version})">
+                        <i class="fas fa-retry"></i> Retry
+                    </button>
+                </div>
+            `;
+        }
+    }
+};
+
+window.rollbackToVersion = function(orgSlug, appSlug, envSlug, toVersion) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Confirm Rollback</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to rollback to <strong>Version ${toVersion}</strong>?</p>
+                <p class="warning-text">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    This will create a new version with the configuration from Version ${toVersion} and make it active.
+                </p>
+                <div class="form-group">
+                    <label for="rollback-reason">Reason (optional):</label>
+                    <input type="text" id="rollback-reason" placeholder="e.g., Reverting due to production issue">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+                <button class="btn btn-warning" onclick="confirmRollback('${orgSlug}', '${appSlug}', '${envSlug}', ${toVersion})">
+                    <i class="fas fa-undo"></i> Rollback
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+};
+
+window.confirmRollback = async function(orgSlug, appSlug, envSlug, toVersion) {
+    const modal = document.querySelector('.modal-overlay');
+    const reason = document.getElementById('rollback-reason').value;
+
+    try {
+        const rollbackBtn = modal.querySelector('.btn-warning');
+        rollbackBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Rolling back...';
+        rollbackBtn.disabled = true;
+
+        await API.post(`/admin/orgs/${orgSlug}/apps/${appSlug}/envs/${envSlug}/rollback`, {
+            to_version: toVersion,
+            created_by: reason || 'Dashboard User'
+        });
+
+        modal.remove();
+        dashboard.showSuccess(`Successfully rolled back to Version ${toVersion}`);
+
+        // Refresh the configuration display
+        dashboard.filterConfigurations();
+
+    } catch (error) {
+        console.error('Rollback failed:', error);
+        dashboard.showError('Failed to rollback configuration: ' + APIUtils.formatError(error));
+
+        // Reset button
+        const rollbackBtn = modal.querySelector('.btn-warning');
+        rollbackBtn.innerHTML = '<i class="fas fa-undo"></i> Rollback';
+        rollbackBtn.disabled = false;
+    }
+};
+
+// Initialize dashboard when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    window.dashboard = new Dashboard();
+});

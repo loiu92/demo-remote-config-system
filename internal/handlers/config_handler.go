@@ -209,6 +209,56 @@ func (h *ConfigHandler) GetConfigHistory(c *gin.Context) {
 	c.JSON(http.StatusOK, history)
 }
 
+// GetConfigVersion handles GET /admin/orgs/:org/apps/:app/envs/:env/history/:version
+func (h *ConfigHandler) GetConfigVersion(c *gin.Context) {
+	orgSlug := c.Param("org")
+	appSlug := c.Param("app")
+	envSlug := c.Param("env")
+	versionStr := c.Param("version")
+
+	// Parse version parameter
+	version, err := strconv.Atoi(versionStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error:     "bad_request",
+			Message:   "Invalid version parameter: " + err.Error(),
+			Timestamp: time.Now(),
+			Path:      c.Request.URL.Path,
+		})
+		return
+	}
+
+	config, err := h.configService.GetConfigurationVersion(orgSlug, appSlug, envSlug, version)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if err.Error() == "environment not found" || err.Error() == "configuration version not found" {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, models.ErrorResponse{
+			Error:     "version_not_found",
+			Message:   err.Error(),
+			Timestamp: time.Now(),
+			Path:      c.Request.URL.Path,
+		})
+		return
+	}
+
+	// Set cache headers for historical versions (longer cache time since they don't change)
+	c.Header("Cache-Control", "public, max-age=3600") // 1 hour
+	c.Header("ETag", `"`+strconv.Itoa(config.Version)+`"`)
+
+	// Check if client has the version cached
+	if match := c.GetHeader("If-None-Match"); match != "" {
+		if match == `"`+strconv.Itoa(config.Version)+`"` {
+			c.Status(http.StatusNotModified)
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, config)
+}
+
 // GetConfigChanges handles GET /admin/orgs/:org/apps/:app/envs/:env/changes
 func (h *ConfigHandler) GetConfigChanges(c *gin.Context) {
 	orgSlug := c.Param("org")

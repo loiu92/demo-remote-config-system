@@ -170,6 +170,7 @@ func main() {
 					// Configuration management
 					envs.PUT("/config", configHandler.UpdateConfig)
 					envs.GET("/history", configHandler.GetConfigHistory)
+					envs.GET("/history/:version", configHandler.GetConfigVersion)
 					envs.GET("/changes", configHandler.GetConfigChanges)
 					envs.POST("/rollback", configHandler.RollbackConfig)
 				}
@@ -214,10 +215,11 @@ func main() {
 	log.Println("  DELETE /admin/orgs/:org/apps/:app/envs/:env          - Delete environment")
 	log.Println("")
 	log.Println("Configuration API:")
-	log.Println("  PUT    /admin/orgs/:org/apps/:app/envs/:env/config   - Update config")
-	log.Println("  GET    /admin/orgs/:org/apps/:app/envs/:env/history  - Get config history")
-	log.Println("  GET    /admin/orgs/:org/apps/:app/envs/:env/changes  - Get config changes")
-	log.Println("  POST   /admin/orgs/:org/apps/:app/envs/:env/rollback - Rollback config")
+	log.Println("  PUT    /admin/orgs/:org/apps/:app/envs/:env/config           - Update config")
+	log.Println("  GET    /admin/orgs/:org/apps/:app/envs/:env/history          - Get config history")
+	log.Println("  GET    /admin/orgs/:org/apps/:app/envs/:env/history/:version - Get specific config version")
+	log.Println("  GET    /admin/orgs/:org/apps/:app/envs/:env/changes          - Get config changes")
+	log.Println("  POST   /admin/orgs/:org/apps/:app/envs/:env/rollback         - Rollback config")
 
 	if err := r.Run(":" + port); err != nil {
 		log.Fatal("Failed to start server:", err)
