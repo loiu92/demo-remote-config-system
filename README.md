@@ -146,13 +146,15 @@ For development with hot reloading and testing capabilities:
 
 3. **Run tests**:
    ```bash
-   make dev-test               # Run all tests
-   make dev-test-verbose       # Run with verbose output
-   make dev-test-coverage      # Run with coverage report
-   make dev-test-race          # Run with race detection
-   make dev-test-unit          # Run unit tests only
-   make dev-test-integration   # Run integration tests only
+   make go-info                # Check if using local Go or Docker
+   make test                   # Run fast unit tests (auto-detects Go)
+   make test-unit              # Run unit tests with verbose output
+   make test-unit-coverage     # Run unit tests with coverage report
+   make test-integration       # Run integration tests (requires Docker)
+   make test-all               # Run both unit and integration tests
    ```
+
+   > **Note**: The Makefile automatically detects if Go is installed locally. If not, it uses Docker to run Go commands.
 
 4. **Development utilities**:
    ```bash
@@ -468,6 +470,34 @@ remote-config-system/
 ```
 
 ## Testing
+
+The project uses a two-tier testing strategy:
+
+### Unit Tests (Fast & Reliable)
+- **No external dependencies** - Use mocks and in-memory implementations
+- **Fast execution** - Complete in seconds
+- **Run on every PR** - Reliable in CI/CD
+- **Easy to debug** - Isolated test cases
+- **Works without Go installed** - Uses Docker if Go not available
+
+```bash
+make go-info                 # Check if using local Go or Docker
+make test                    # Run all unit tests
+make test-unit-coverage      # Run with coverage report
+make test-services           # Test specific package
+make test-handlers           # Test handlers only
+```
+
+### Integration Tests (Comprehensive)
+- **Real database/Redis** - Uses Docker containers
+- **End-to-end testing** - Full system integration
+- **Run on main branch** - Comprehensive validation
+- **Slower execution** - Takes longer but thorough
+
+```bash
+make test-integration        # Run integration tests
+make test-all               # Run both unit + integration
+```
 
 ### Running Tests
 

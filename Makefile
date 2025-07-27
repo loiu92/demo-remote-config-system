@@ -70,47 +70,71 @@ clean:
 	docker-compose down -v
 	docker system prune -f
 
-# Development testing commands (with Go toolchain)
-dev-test:
-	docker-compose -f docker-compose.dev.yml exec api go test ./...
+# Testing commands
+# Check if Go is installed locally, otherwise use Docker
+GO_CMD := $(shell command -v go 2> /dev/null)
+ifndef GO_CMD
+    # Use golang:1.21 (debian-based) instead of alpine for CGO support (needed for -race)
+    GO_CMD = docker run --rm -v $(PWD):/app -w /app golang:1.21 go
+    GO_INFO = "Using Docker (golang:1.21 with CGO support)"
+    RACE_FLAG = -race
+else
+    GO_INFO = "Using local Go: $(GO_CMD)"
+    RACE_FLAG = -race
+endif
 
-dev-test-verbose:
-	docker-compose -f docker-compose.dev.yml exec api go test -v ./...
+# Show which Go is being used
+go-info:
+	@echo $(GO_INFO)
 
-dev-test-coverage:
-	docker-compose -f docker-compose.dev.yml exec api sh -c "go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out -o coverage.html"
+# Fast unit tests (no external Docker dependencies, but may use Docker for Go)
+test-unit:
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/handlers/... ./internal/middleware/... ./internal/sse/... ./internal/models/...
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/cache/... -run "Unit"
 
-dev-test-race:
-	docker-compose -f docker-compose.dev.yml exec api go test -race ./...
+# Unit tests without race detection (faster, works on any system)
+test-unit-fast:
+	$(GO_CMD) test -v ./internal/handlers/... ./internal/middleware/... ./internal/sse/... ./internal/models/...
+	$(GO_CMD) test -v ./internal/cache/... -run "Unit"
 
-dev-test-unit:
-	docker-compose -f docker-compose.dev.yml exec api go test -short ./...
+# Unit tests with coverage
+test-unit-coverage:
+	$(GO_CMD) test -v $(RACE_FLAG) -coverprofile=coverage.out ./internal/handlers/... ./internal/middleware/... ./internal/sse/... ./internal/models/...
+	$(GO_CMD) test -v $(RACE_FLAG) -coverprofile=coverage_cache.out ./internal/cache/... -run "Unit"
+	echo "mode: atomic" > combined_coverage.out
+	tail -n +2 coverage.out >> combined_coverage.out 2>/dev/null || true
+	tail -n +2 coverage_cache.out >> combined_coverage.out 2>/dev/null || true
+	$(GO_CMD) tool cover -html=combined_coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
 
-dev-test-integration:
-	docker-compose -f docker-compose.dev.yml exec api go test -run Integration ./...
+# Integration tests (requires Docker services)
+test-integration: dev-up
+	@echo "Waiting for services to be ready..."
+	@sleep 10
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/db/... -run "TestOrganizationRepository_"
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/cache/... -run "TestRedisCache_"
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/integration/...
 
-# Run specific test packages in development
-dev-test-services:
-	docker-compose -f docker-compose.dev.yml exec api go test ./internal/services/...
+# Run specific test packages (unit tests)
+test-services:
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/services/...
 
-dev-test-handlers:
-	docker-compose -f docker-compose.dev.yml exec api go test ./internal/handlers/...
+test-handlers:
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/handlers/...
 
-dev-test-db:
-	docker-compose -f docker-compose.dev.yml exec api go test ./internal/db/...
 
-dev-test-cache:
-	docker-compose -f docker-compose.dev.yml exec api go test ./internal/cache/...
 
-dev-test-middleware:
-	docker-compose -f docker-compose.dev.yml exec api go test ./internal/middleware/...
+test-cache-unit:
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/cache/... -run "Unit"
 
-dev-test-sse:
-	docker-compose -f docker-compose.dev.yml exec api go test ./internal/sse/...
+test-middleware:
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/middleware/...
 
-# Run tests using dedicated test service
-test-service:
-	docker-compose -f docker-compose.dev.yml run --rm test
+test-sse:
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/sse/...
+
+test-models:
+	$(GO_CMD) test -v $(RACE_FLAG) ./internal/models/...
 
 # Development utilities
 dev-shell:
@@ -122,94 +146,39 @@ dev-logs:
 dev-clean:
 	docker-compose -f docker-compose.dev.yml down -v
 
-# Run all tests (requires dev environment to be running)
-test: dev-test
+# Main test commands
+test: test-unit
+	@echo "✅ All unit tests passed!"
 
-# Run tests with verbose output
-test-verbose:
-	docker-compose -f docker-compose.dev.yml exec api go test -v ./...
-
-# Run tests for specific package
-test-package:
-	@echo "Usage: make test-package PACKAGE=./internal/handlers"
-	@if [ -z "$(PACKAGE)" ]; then echo "Please specify PACKAGE=<package_path>"; exit 1; fi
-	docker-compose -f docker-compose.dev.yml exec api go test -v $(PACKAGE)
-
-# Run unit tests only (no integration tests, no external dependencies)
-test-unit:
-	docker run --rm -v $(PWD):/app -w /app golang:1.22-alpine go test -short ./internal/models ./internal/middleware
-
-# Setup and run all tests (one command)
-test-all: dev-down dev-build dev-up
-	@echo "Waiting for services to be ready..."
-	@sleep 5
-	$(MAKE) dev-test
-	@echo "All tests completed!"
-
-# Test with coverage
-test-coverage:
-	docker-compose -f docker-compose.dev.yml exec api go test -coverprofile=coverage.out ./...
-	docker-compose -f docker-compose.dev.yml exec api go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated: coverage.html"
-
-# Run tests with race detection
-test-race:
-	docker-compose -f docker-compose.dev.yml exec api go test -race ./...
-
-# Run integration tests only
-test-integration:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go test -run Integration ./...
-
-# Run specific test package
-test-services:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go test ./internal/services/...
-
-test-handlers:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go test ./internal/handlers/...
-
-test-db:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go test ./internal/db/...
-
-test-cache:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go test ./internal/cache/...
-
-test-middleware:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go test ./internal/middleware/...
-
-test-sse:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go test ./internal/sse/...
-
-# Run tests in running Docker Compose environment
-test-docker-compose:
-	docker-compose exec api go test ./...
-
-# Run tests with coverage in running Docker Compose environment
-test-docker-compose-coverage:
-	docker-compose exec api go test -coverprofile=coverage.out ./...
-	docker-compose exec api go tool cover -html=coverage.out -o coverage.html
+test-all: test-unit test-integration
+	@echo "✅ All tests (unit + integration) passed!"
 
 # Benchmark tests
 test-bench:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go test -bench=. ./...
+	$(GO_CMD) test -bench=. ./...
 
 # Clean test cache
 test-clean:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go clean -testcache
+	$(GO_CMD) clean -testcache
 
-# Run tests with local Go (if available)
-test-local:
-	go test ./...
-
-test-local-coverage:
-	go test -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
-
-test-local-verbose:
-	go test -v ./...
-
-# Tidy go modules
+# Go module management
 tidy:
-	docker run --rm -v $(PWD):/app -w /app golang:1.21-alpine go mod tidy
+	$(GO_CMD) mod tidy
+
+mod-download:
+	$(GO_CMD) mod download
+
+# Linting and code quality (requires Go tools)
+lint:
+	$(GO_CMD) vet ./...
+ifndef GO_CMD
+	docker run --rm -v $(PWD):/app -w /app golang:1.21 sh -c "go install honnef.co/go/tools/cmd/staticcheck@latest && staticcheck ./..."
+else
+	$(GO_CMD) install honnef.co/go/tools/cmd/staticcheck@latest
+	staticcheck ./...
+endif
+
+
 
 
 

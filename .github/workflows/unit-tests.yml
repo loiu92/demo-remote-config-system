@@ -1,0 +1,150 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Verify dependencies
+      run: go mod verify
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Install staticcheck
+      run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+    - name: Run staticcheck
+      run: staticcheck ./...
+
+    - name: Run unit tests
+      run: |
+        # Run only unit tests (exclude integration tests that use testcontainers)
+        go test -v -race -coverprofile=coverage.out \
+          ./internal/handlers/... \
+          ./internal/middleware/... \
+          ./internal/services/... \
+          ./internal/sse/...
+
+    - name: Run database unit tests
+      run: |
+        go test -v -race -coverprofile=coverage_db.out \
+          ./internal/db/... \
+          -run "Unit"
+
+    - name: Run cache unit tests  
+      run: |
+        go test -v -race -coverprofile=coverage_cache.out \
+          ./internal/cache/... \
+          -run "Unit"
+
+    - name: Combine coverage reports
+      run: |
+        echo "mode: atomic" > combined_coverage.out
+        tail -n +2 coverage.out >> combined_coverage.out 2>/dev/null || true
+        tail -n +2 coverage_db.out >> combined_coverage.out 2>/dev/null || true
+        tail -n +2 coverage_cache.out >> combined_coverage.out 2>/dev/null || true
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./combined_coverage.out
+        flags: unittests
+        name: codecov-umbrella
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: test_remote_config
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run integration tests
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: test_remote_config
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+        GIN_MODE: test
+      run: |
+        # Run only integration tests (exclude unit tests)
+        go test -v -race -coverprofile=integration_coverage.out \
+          ./internal/db/... \
+          ./internal/cache/... \
+          ./internal/integration/... \
+          -run "TestOrganizationRepository_|TestRedisCache_|TestIntegration"
+
+    - name: Upload integration coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./integration_coverage.out
+        flags: integration
+        name: codecov-integration
