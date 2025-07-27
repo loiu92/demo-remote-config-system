@@ -9,6 +9,16 @@ import (
 	"remote-config-system/internal/models"
 )
 
+// SSEServiceInterface defines the interface for SSE service operations
+type SSEServiceInterface interface {
+	RegisterClient(client *Client)
+	UnregisterClient(client *Client)
+	BroadcastConfigUpdate(event models.ConfigUpdateEvent)
+	BroadcastCustomEvent(org, app, env, eventType string, data interface{})
+	GetStats() SSEStats
+	Ping(clientID string)
+}
+
 // Client represents a connected SSE client
 type Client struct {
 	ID           string

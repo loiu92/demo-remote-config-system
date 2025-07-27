@@ -37,20 +37,62 @@ make up
 
 ### Development
 
-Start only the database and Redis for local development:
+#### Production Environment
+For production deployment:
 ```bash
-make dev-up
+make up      # Start all services
+make logs    # View logs
+make down    # Stop all services
 ```
 
-View logs:
-```bash
-make logs
-```
+#### Development Environment (with Go toolchain for testing)
+For development with hot reloading and testing capabilities:
 
-Stop all services:
-```bash
-make down
-```
+1. **Set up development environment**:
+   ```bash
+   ./scripts/dev-setup.sh setup
+   ```
+
+2. **Start development environment**:
+   ```bash
+   make dev                    # Start with hot reloading (foreground)
+   make dev-up                 # Start in background
+   ./scripts/dev-setup.sh start
+   ```
+
+3. **Run tests**:
+   ```bash
+   make dev-test               # Run all tests
+   make dev-test-verbose       # Run with verbose output
+   make dev-test-coverage      # Run with coverage report
+   make dev-test-race          # Run with race detection
+   make dev-test-unit          # Run unit tests only
+   make dev-test-integration   # Run integration tests only
+   ```
+
+4. **Development utilities**:
+   ```bash
+   make dev-shell              # Open shell in development container
+   make dev-logs               # View development logs
+   make dev-clean              # Clean up development environment
+   ```
+
+5. **Test specific packages**:
+   ```bash
+   make dev-test-services      # Test services layer
+   make dev-test-handlers      # Test HTTP handlers
+   make dev-test-db            # Test database layer
+   make dev-test-cache         # Test cache layer
+   make dev-test-middleware    # Test middleware
+   make dev-test-sse           # Test SSE functionality
+   ```
+
+The development environment includes:
+- **Go toolchain** for testing and development
+- **Hot reloading** with Air for instant code changes
+- **Testcontainers** support for isolated testing
+- **Development tools** (golangci-lint, staticcheck)
+- **Docker socket access** for integration testing
 
 ## Web Dashboard
 
@@ -340,6 +382,30 @@ remote-config-system/
 ├── docker-compose.yml      # Docker services configuration
 └── Dockerfile              # Application container
 ```
+
+## Testing
+
+### Running Tests
+
+```bash
+# Start development environment and run all tests
+./scripts/run-tests.sh all
+
+# Quick test run (if dev environment is already running)
+./scripts/run-tests.sh quick
+
+# Manual approach
+make dev-up    # Start PostgreSQL, Redis, API
+make dev-test  # Run all tests
+```
+
+### Test Types
+
+- **Unit Tests**: Individual functions with mocked dependencies
+- **Integration Tests**: Full API workflows with real database/cache
+- **Handler Tests**: HTTP request/response testing
+- **Database Tests**: Repository layer testing
+- **Cache Tests**: Redis operations testing
 
 ## Configuration Example
 

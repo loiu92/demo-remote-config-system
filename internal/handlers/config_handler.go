@@ -13,11 +13,11 @@ import (
 
 // ConfigHandler handles configuration-related HTTP requests
 type ConfigHandler struct {
-	configService *services.ConfigService
+	configService services.ConfigServiceInterface
 }
 
 // NewConfigHandler creates a new configuration handler
-func NewConfigHandler(configService *services.ConfigService) *ConfigHandler {
+func NewConfigHandler(configService services.ConfigServiceInterface) *ConfigHandler {
 	return &ConfigHandler{
 		configService: configService,
 	}

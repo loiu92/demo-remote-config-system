@@ -95,6 +95,8 @@ class Dashboard {
             ]);
 
             this.updateDashboardStats();
+            this.renderDashboardStats();
+            this.loadRecentActivity();
             this.hideLoadingState();
         } catch (error) {
             console.error('Failed to load initial data:', error);
@@ -104,48 +106,58 @@ class Dashboard {
     }
 
     async loadSectionData(section) {
-        switch (section) {
-            case 'dashboard':
-                await this.loadDashboardData();
-                break;
-            case 'organizations':
-                await this.loadOrganizations();
-                this.renderOrganizations();
-                break;
-            case 'applications':
-                await this.loadApplications();
-                this.renderApplications();
-                break;
-            case 'environments':
-                await this.loadEnvironments();
-                this.renderEnvironments();
-                break;
-            case 'configurations':
-                this.renderConfigurations();
-                break;
-            case 'monitoring':
-                await this.loadMonitoringData();
-                break;
-            case 'cache':
-                await this.loadCacheStats();
-                this.renderCacheDetails();
-                break;
-            case 'sse':
-                await this.loadSSEStats();
-                this.renderSSEDetails();
-                break;
+        try {
+            switch (section) {
+                case 'dashboard':
+                    this.resetDashboardToLoading();
+                    await this.loadDashboardData();
+                    break;
+                case 'organizations':
+                    await this.loadOrganizations();
+                    this.renderOrganizations();
+                    break;
+                case 'applications':
+                    await this.loadApplications();
+                    this.renderApplications();
+                    break;
+                case 'environments':
+                    await this.loadEnvironments();
+                    this.renderEnvironments();
+                    break;
+                case 'configurations':
+                    this.renderConfigurations();
+                    break;
+                case 'monitoring':
+                    await this.loadMonitoringData();
+                    break;
+                case 'cache':
+                    await this.loadCacheStats();
+                    this.renderCacheDetails();
+                    break;
+                case 'sse':
+                    await this.loadSSEStats();
+                    this.renderSSEDetails();
+                    break;
+            }
+        } catch (error) {
+            console.error(`Failed to load section data for ${section}:`, error);
         }
     }
 
     async loadDashboardData() {
-        await Promise.all([
-            this.loadOrganizations(),
-            this.loadCacheStats(),
-            this.loadSSEStats()
-        ]);
-        this.updateDashboardStats();
-        this.renderDashboardStats();
-        this.loadRecentActivity();
+        try {
+            // Load dashboard-specific data in parallel
+            await Promise.all([
+                this.loadCacheStats(),
+                this.loadSSEStats()
+            ]);
+            this.updateDashboardStats();
+            this.renderDashboardStats();
+            this.loadRecentActivity();
+        } catch (error) {
+            console.error('Failed to load dashboard data:', error);
+            this.showDashboardError(error);
+        }
     }
 
     async loadOrganizations() {
@@ -266,10 +278,11 @@ class Dashboard {
         const cacheStatsEl = document.getElementById('cache-stats');
         if (this.data.cacheStats && this.data.cacheStats.enabled) {
             const stats = this.data.cacheStats.stats;
-            const hitRatio = stats.hits + stats.misses > 0 
+            const totalKeys = this.data.cacheStats.total_keys; // total_keys is at root level
+            const hitRatio = stats.hits + stats.misses > 0
                 ? ((stats.hits / (stats.hits + stats.misses)) * 100).toFixed(1)
                 : '0.0';
-            
+
             cacheStatsEl.innerHTML = `
                 <div class="stat-row">
                     <span>Hit Ratio:</span>
@@ -277,7 +290,7 @@ class Dashboard {
                 </div>
                 <div class="stat-row">
                     <span>Total Keys:</span>
-                    <span class="stat-value">${stats.total_keys}</span>
+                    <span class="stat-value">${totalKeys}</span>
                 </div>
                 <div class="stat-row">
                     <span>Hits:</span>
@@ -294,8 +307,9 @@ class Dashboard {
 
         // Render SSE stats
         const sseStatsEl = document.getElementById('sse-stats');
-        if (this.data.sseStats) {
+        if (this.data.sseStats && this.data.sseStats.stats) {
             const stats = this.data.sseStats.stats;
+
             sseStatsEl.innerHTML = `
                 <div class="stat-row">
                     <span>Active Connections:</span>
@@ -351,6 +365,52 @@ class Dashboard {
                 </div>
             </div>
         `;
+    }
+
+    resetDashboardToLoading() {
+        // Reset dashboard elements to loading state
+        const cacheStatsEl = document.getElementById('cache-stats');
+        if (cacheStatsEl) {
+            cacheStatsEl.innerHTML = '<div class="loading-spinner">Loading...</div>';
+        }
+
+        const sseStatsEl = document.getElementById('sse-stats');
+        if (sseStatsEl) {
+            sseStatsEl.innerHTML = '<div class="loading-spinner">Loading...</div>';
+        }
+
+        const activityEl = document.getElementById('recent-activity');
+        if (activityEl) {
+            activityEl.innerHTML = '<div class="loading-spinner">Loading...</div>';
+        }
+
+        // Reset stats to loading state
+        document.getElementById('total-orgs').textContent = '-';
+        document.getElementById('total-apps').textContent = '-';
+        document.getElementById('total-envs').textContent = '-';
+        document.getElementById('active-connections').textContent = '-';
+    }
+
+
+
+    showDashboardError(error) {
+        // Show error in cache stats
+        const cacheStatsEl = document.getElementById('cache-stats');
+        if (cacheStatsEl) {
+            cacheStatsEl.innerHTML = '<div class="error">Failed to load cache stats</div>';
+        }
+
+        // Show error in SSE stats
+        const sseStatsEl = document.getElementById('sse-stats');
+        if (sseStatsEl) {
+            sseStatsEl.innerHTML = '<div class="error">Failed to load SSE stats</div>';
+        }
+
+        // Show error in recent activity
+        const activityEl = document.getElementById('recent-activity');
+        if (activityEl) {
+            activityEl.innerHTML = '<div class="error">Failed to load recent activity</div>';
+        }
     }
 
     renderOrganizations() {

@@ -14,15 +14,33 @@ import (
 	"remote-config-system/internal/sse"
 )
 
+// ConfigServiceInterface defines the interface for configuration service operations
+type ConfigServiceInterface interface {
+	// Authentication
+	ValidateAPIKey(apiKey string) (*models.Application, error)
+
+	// Configuration operations
+	GetConfiguration(orgSlug, appSlug, envSlug string) (*models.ConfigResponse, error)
+	GetConfigurationByAPIKey(apiKey, envSlug string) (*models.ConfigResponse, error)
+	UpdateConfiguration(orgSlug, appSlug, envSlug string, req *models.CreateConfigRequest) (*models.ConfigResponse, error)
+	RollbackConfiguration(orgSlug, appSlug, envSlug string, req *models.RollbackRequest) (*models.ConfigResponse, error)
+	GetConfigurationHistory(orgSlug, appSlug, envSlug string, params models.PaginationParams) (*models.PaginatedResponse, error)
+	GetConfigurationVersion(orgSlug, appSlug, envSlug string, version int) (*models.ConfigResponse, error)
+	GetConfigurationChanges(orgSlug, appSlug, envSlug string, params models.PaginationParams) (*models.PaginatedResponse, error)
+
+	// Health check
+	HealthCheck() map[string]string
+}
+
 // ConfigService handles configuration business logic
 type ConfigService struct {
 	repos      *db.Repositories
 	cache      *cache.RedisClient
-	sseService *sse.SSEService
+	sseService sse.SSEServiceInterface
 }
 
 // NewConfigService creates a new configuration service
-func NewConfigService(repos *db.Repositories, cacheClient *cache.RedisClient, sseService *sse.SSEService) *ConfigService {
+func NewConfigService(repos *db.Repositories, cacheClient *cache.RedisClient, sseService sse.SSEServiceInterface) *ConfigService {
 	return &ConfigService{
 		repos:      repos,
 		cache:      cacheClient,

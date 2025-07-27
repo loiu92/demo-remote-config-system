@@ -14,11 +14,11 @@ import (
 
 // AuthMiddleware handles API key authentication
 type AuthMiddleware struct {
-	configService *services.ConfigService
+	configService services.ConfigServiceInterface
 }
 
 // NewAuthMiddleware creates a new auth middleware
-func NewAuthMiddleware(configService *services.ConfigService) *AuthMiddleware {
+func NewAuthMiddleware(configService services.ConfigServiceInterface) *AuthMiddleware {
 	return &AuthMiddleware{
 		configService: configService,
 	}

@@ -41,3 +41,7 @@ Thumbs.db
 # Docker volumes
 postgres_data/
 redis_data/
+
+# Test coverage files
+coverage.out
+coverage.html

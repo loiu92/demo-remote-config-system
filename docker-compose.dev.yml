@@ -1,0 +1,102 @@
+# Development Docker Compose
+# This setup includes Go toolchain for development and testing
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: remote_config
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Development API Application with Go toolchain
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=remote_config
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GIN_MODE=debug
+    volumes:
+      # Mount source code for live reloading
+      - .:/app
+      # Mount Docker socket for testcontainers (if needed)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Cache Go modules
+      - go_mod_cache:/go/pkg/mod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Override default command for development (using basic go run for now)
+    command: ["go", "run", "./cmd/api"]
+    restart: unless-stopped
+
+  # Test runner service (separate from main API)
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=remote_config
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GIN_MODE=test
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      - go_mod_cache:/go/pkg/mod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Don't start by default, only when running tests
+    profiles:
+      - test
+    command: ["go", "test", "./..."]
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+  go_mod_cache:

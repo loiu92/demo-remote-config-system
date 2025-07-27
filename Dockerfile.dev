@@ -1,0 +1,43 @@
+# Development Dockerfile
+# This dockerfile includes Go toolchain for development, testing, and debugging
+
+FROM golang:1.22-alpine
+
+# Install development dependencies
+RUN apk add --no-cache \
+    git \
+    make \
+    curl \
+    bash \
+    docker-cli \
+    ca-certificates \
+    tzdata
+
+# Install additional development tools (skip problematic ones for now)
+# Note: Latest versions require Go 1.23+, we'll use basic go run for development
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Create directories for development
+RUN mkdir -p /app/tmp /app/coverage
+
+# Set environment variables for development
+ENV GIN_MODE=debug
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+
+# Expose port
+EXPOSE 8080
+
+# Default command for development (can be overridden)
+CMD ["go", "run", "./cmd/api"]
