@@ -25,6 +25,14 @@ server {
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
     add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
 
+    # Static assets (CSS, JS, images)
+    location /static/ {
+        alias /usr/share/nginx/html/;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        add_header Vary Accept-Encoding;
+    }
+
     # Dashboard routes
     location / {
         try_files $uri $uri/ /dashboard.html;

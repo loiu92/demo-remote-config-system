@@ -6,6 +6,9 @@ RUN apk --no-cache add wget
 
 # Copy static files
 COPY static/ /usr/share/nginx/html/
+# Ensure static files have correct permissions
+RUN chmod -R 644 /usr/share/nginx/html/ && \
+    find /usr/share/nginx/html/ -type d -exec chmod 755 {} \;
 
 # Copy nginx configurations
 COPY nginx.conf.template /etc/nginx/conf.d/default.conf.template
