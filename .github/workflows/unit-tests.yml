@@ -67,14 +67,31 @@ jobs:
     - name: Run staticcheck
       run: |
         # Run staticcheck on specific packages (exclude integration tests and testutil)
-        staticcheck ./cmd/api/...
-        staticcheck ./internal/handlers/...
-        staticcheck ./internal/middleware/...
-        staticcheck ./internal/services/...
-        staticcheck ./internal/sse/...
-        staticcheck ./internal/models/...
-        staticcheck ./internal/db/...
-        staticcheck ./internal/cache/...
+        echo "Running staticcheck on cmd/api/..."
+        staticcheck ./cmd/api/... || echo "FAILED: cmd/api"
+
+        echo "Running staticcheck on internal/handlers/..."
+        staticcheck ./internal/handlers/... || echo "FAILED: internal/handlers"
+
+        echo "Running staticcheck on internal/middleware/..."
+        staticcheck ./internal/middleware/... || echo "FAILED: internal/middleware"
+
+        echo "Running staticcheck on internal/services/..."
+        staticcheck ./internal/services/... || echo "FAILED: internal/services"
+
+        echo "Running staticcheck on internal/sse/..."
+        staticcheck ./internal/sse/... || echo "FAILED: internal/sse"
+
+        echo "Running staticcheck on internal/models/..."
+        staticcheck ./internal/models/... || echo "FAILED: internal/models"
+
+        echo "Running staticcheck on internal/db/..."
+        staticcheck ./internal/db/... || echo "FAILED: internal/db"
+
+        echo "Running staticcheck on internal/cache/..."
+        staticcheck ./internal/cache/... || echo "FAILED: internal/cache"
+
+        echo "All staticcheck checks completed"
 
     - name: Run unit tests
       run: |

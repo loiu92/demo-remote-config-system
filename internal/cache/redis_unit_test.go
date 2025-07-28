@@ -314,7 +314,7 @@ func TestRedisClient_StatsTracking_Unit(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Get non-existent config (should be a miss)
-	_, err = cache.GetConfig("non:existent:key")
+	_, _ = cache.GetConfig("non:existent:key")
 	// This might not error, but should still count as a miss
 
 	// Check stats
