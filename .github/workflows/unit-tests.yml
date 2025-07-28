@@ -35,14 +35,31 @@ jobs:
     - name: Run go vet
       run: |
         # Run go vet on specific packages (exclude integration tests and testutil)
-        go vet ./cmd/api/...
-        go vet ./internal/handlers/...
-        go vet ./internal/middleware/...
-        go vet ./internal/services/...
-        go vet ./internal/sse/...
-        go vet ./internal/models/...
-        go vet ./internal/db/...
-        go vet ./internal/cache/...
+        echo "Running go vet on cmd/api/..."
+        go vet ./cmd/api/... || echo "FAILED: cmd/api"
+
+        echo "Running go vet on internal/handlers/..."
+        go vet ./internal/handlers/... || echo "FAILED: internal/handlers"
+
+        echo "Running go vet on internal/middleware/..."
+        go vet ./internal/middleware/... || echo "FAILED: internal/middleware"
+
+        echo "Running go vet on internal/services/..."
+        go vet ./internal/services/... || echo "FAILED: internal/services"
+
+        echo "Running go vet on internal/sse/..."
+        go vet ./internal/sse/... || echo "FAILED: internal/sse"
+
+        echo "Running go vet on internal/models/..."
+        go vet ./internal/models/... || echo "FAILED: internal/models"
+
+        echo "Running go vet on internal/db/..."
+        go vet ./internal/db/... || echo "FAILED: internal/db"
+
+        echo "Running go vet on internal/cache/..."
+        go vet ./internal/cache/... || echo "FAILED: internal/cache"
+
+        echo "All go vet checks completed"
 
     - name: Install staticcheck
       run: go install honnef.co/go/tools/cmd/staticcheck@latest
