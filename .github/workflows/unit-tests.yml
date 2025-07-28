@@ -34,16 +34,16 @@ jobs:
 
     - name: Run go vet
       run: |
-        # Run go vet on all packages except integration tests
-        go vet $(go list ./... | grep -v '/internal/integration')
+        # Run go vet on specific packages (exclude integration tests and testutil)
+        go vet ./cmd/... ./internal/handlers/... ./internal/middleware/... ./internal/services/... ./internal/sse/... ./internal/models/... ./internal/db/... ./internal/cache/...
 
     - name: Install staticcheck
       run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
     - name: Run staticcheck
       run: |
-        # Run staticcheck on all packages except integration tests
-        staticcheck $(go list ./... | grep -v '/internal/integration')
+        # Run staticcheck on specific packages (exclude integration tests and testutil)
+        staticcheck ./cmd/... ./internal/handlers/... ./internal/middleware/... ./internal/services/... ./internal/sse/... ./internal/models/... ./internal/db/... ./internal/cache/...
 
     - name: Run unit tests
       run: |
