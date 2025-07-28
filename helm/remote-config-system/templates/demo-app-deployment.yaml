@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "remote-config-system.fullname" . }}-demo-app
+  labels:
+    {{- include "remote-config-system.labels" . | nindent 4 }}
+    app.kubernetes.io/component: demo-app
+spec:
+  replicas: {{ .Values.demoApp.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "remote-config-system.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: demo-app
+  template:
+    metadata:
+      labels:
+        {{- include "remote-config-system.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: demo-app
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "remote-config-system.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: demo-app
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.demoApp.image.repository }}:{{ .Values.demoApp.image.tag }}"
+          imagePullPolicy: {{ .Values.demoApp.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.demoApp.service.targetPort }}
+              protocol: TCP
+          {{- if .Values.demoApp.healthCheck.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.demoApp.healthCheck.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.demoApp.healthCheck.initialDelaySeconds }}
+            periodSeconds: {{ .Values.demoApp.healthCheck.periodSeconds }}
+            timeoutSeconds: {{ .Values.demoApp.healthCheck.timeoutSeconds }}
+            failureThreshold: {{ .Values.demoApp.healthCheck.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.demoApp.healthCheck.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.demoApp.healthCheck.initialDelaySeconds }}
+            periodSeconds: {{ .Values.demoApp.healthCheck.periodSeconds }}
+            timeoutSeconds: {{ .Values.demoApp.healthCheck.timeoutSeconds }}
+            failureThreshold: {{ .Values.demoApp.healthCheck.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.demoApp.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

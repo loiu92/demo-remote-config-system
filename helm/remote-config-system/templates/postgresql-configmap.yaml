@@ -1,0 +1,74 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "remote-config-system.fullname" . }}-postgresql-init
+  labels:
+    {{- include "remote-config-system.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+data:
+  001_initial.sql: |
+    -- Remote Configuration System Database Schema
+    -- This file contains the initial database schema for the remote configuration system
+    
+    -- Create organizations table
+    CREATE TABLE IF NOT EXISTS organizations (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        description TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- Create configuration_keys table
+    CREATE TABLE IF NOT EXISTS configuration_keys (
+        id SERIAL PRIMARY KEY,
+        organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        key_name VARCHAR(255) NOT NULL,
+        description TEXT,
+        data_type VARCHAR(50) NOT NULL DEFAULT 'string',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(organization_id, key_name)
+    );
+    
+    -- Create configuration_values table
+    CREATE TABLE IF NOT EXISTS configuration_values (
+        id SERIAL PRIMARY KEY,
+        configuration_key_id INTEGER NOT NULL REFERENCES configuration_keys(id) ON DELETE CASCADE,
+        value TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        created_by VARCHAR(255),
+        UNIQUE(configuration_key_id, version)
+    );
+    
+    -- Create indexes for better performance
+    CREATE INDEX IF NOT EXISTS idx_organizations_name ON organizations(name);
+    CREATE INDEX IF NOT EXISTS idx_configuration_keys_org_key ON configuration_keys(organization_id, key_name);
+    CREATE INDEX IF NOT EXISTS idx_configuration_values_key_active ON configuration_values(configuration_key_id, is_active);
+    CREATE INDEX IF NOT EXISTS idx_configuration_values_version ON configuration_values(configuration_key_id, version);
+    
+    -- Create updated_at trigger function
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        NEW.updated_at = CURRENT_TIMESTAMP;
+        RETURN NEW;
+    END;
+    $$ language 'plpgsql';
+    
+    -- Create triggers for updated_at
+    DROP TRIGGER IF EXISTS update_organizations_updated_at ON organizations;
+    CREATE TRIGGER update_organizations_updated_at
+        BEFORE UPDATE ON organizations
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+    
+    DROP TRIGGER IF EXISTS update_configuration_keys_updated_at ON configuration_keys;
+    CREATE TRIGGER update_configuration_keys_updated_at
+        BEFORE UPDATE ON configuration_keys
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+{{- end }}

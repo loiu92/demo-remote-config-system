@@ -1,0 +1,19 @@
+{{- if .Values.nginx.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "remote-config-system.fullname" . }}-nginx
+  labels:
+    {{- include "remote-config-system.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+spec:
+  type: {{ .Values.nginx.service.type }}
+  ports:
+    - port: {{ .Values.nginx.service.port }}
+      targetPort: {{ .Values.nginx.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "remote-config-system.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nginx
+{{- end }}
