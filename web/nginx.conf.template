@@ -2,7 +2,9 @@ server {
     listen 4000;
     server_name localhost;
     root /usr/share/nginx/html;
-    index dashboard.html;
+
+    # Hide nginx version
+    server_tokens off;
 
     # Enable gzip compression
     gzip on;
@@ -25,20 +27,14 @@ server {
     add_header Referrer-Policy "no-referrer-when-downgrade" always;
     add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
 
-    # Static assets (CSS, JS, images)
+    # Serve static files with /static/ prefix
     location /static/ {
         alias /usr/share/nginx/html/static/;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-        add_header Vary Accept-Encoding;
+        try_files $uri =404;
     }
 
-    # Dashboard routes
+    # Dashboard routes - serve dashboard.html for root and other non-static paths
     location / {
-        try_files $uri $uri/ /static/dashboard.html;
-    }
-
-    location /dashboard {
         try_files /static/dashboard.html =404;
     }
 
