@@ -4,8 +4,8 @@ FROM nginx:alpine
 # Install wget for health checks
 RUN apk --no-cache add wget
 
-# Copy static files
-COPY static/ /usr/share/nginx/html/
+# Copy static files (preserve directory structure)
+COPY static /usr/share/nginx/html/static
 # Ensure static files have correct permissions
 RUN chmod -R 644 /usr/share/nginx/html/ && \
     find /usr/share/nginx/html/ -type d -exec chmod 755 {} \;
