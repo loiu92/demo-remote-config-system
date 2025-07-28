@@ -16,15 +16,19 @@ spec:
     path: helm/remote-config-system
     helm:
       values: |
+        # Force image pulls on every deployment
         api:
           image:
-            tag: "main-b410fac"
+            tag: "latest"
+            pullPolicy: Always
         demoApp:
           image:
-            tag: "main-b410fac"
+            tag: "latest"
+            pullPolicy: Always
         dashboard:
           image:
-            tag: "main-b410fac"
+            tag: "latest"
+            pullPolicy: Always
   destination:
     server: https://kubernetes.default.svc
     namespace: remote-config-system
