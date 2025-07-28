@@ -37,6 +37,14 @@ func main() {
 	defer database.Close()
 	log.Println("Successfully connected to database")
 
+	// Run database migrations
+	log.Println("Running database migrations...")
+	migrationRunner := db.NewMigrationRunner(database, "migrations")
+	if err := migrationRunner.RunMigrations(); err != nil {
+		log.Fatal("Failed to run database migrations:", err)
+	}
+	log.Println("Database migrations completed successfully")
+
 	// Initialize Redis cache
 	cacheConfig := cache.NewConfig()
 	log.Printf("Connecting to Redis with config: %+v", cacheConfig)
