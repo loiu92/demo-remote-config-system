@@ -1,10 +1,25 @@
 # Default values for remote-config-system
 # This is a YAML-formatted file.
+#
+# Service Type Configuration:
+# - Set global.serviceType to change the default for all services
+# - Override individual service types by setting the specific service.type value
+# - Options: ClusterIP (default), LoadBalancer, NodePort
+#
+# Examples:
+# For Cloudflare Tunnel (default): global.serviceType: ClusterIP
+# For direct external access: global.serviceType: LoadBalancer
+# For specific service override: api.service.type: LoadBalancer
 
 # Global settings
 global:
   imageRegistry: "ghcr.io"
   imagePullSecrets: []
+
+  # Default service type for all services
+  # Can be overridden per service
+  # Options: ClusterIP, LoadBalancer, NodePort
+  serviceType: ClusterIP
 
 # API Service Configuration
 api:
@@ -16,7 +31,7 @@ api:
   replicaCount: 1
   
   service:
-    type: LoadBalancer  # Direct access to API
+    type: ""  # Uses global.serviceType if empty, or override with ClusterIP/LoadBalancer/NodePort
     port: 8080
     targetPort: 8080
   
@@ -49,7 +64,7 @@ demoApp:
   replicaCount: 1
   
   service:
-    type: LoadBalancer  # Direct access to demo app
+    type: ""  # Uses global.serviceType if empty, or override with ClusterIP/LoadBalancer/NodePort
     port: 3000
     targetPort: 3000
   
@@ -86,7 +101,7 @@ dashboard:
   replicaCount: 1
   
   service:
-    type: LoadBalancer  # Direct access to dashboard
+    type: ""  # Uses global.serviceType if empty, or override with ClusterIP/LoadBalancer/NodePort
     port: 4000
     targetPort: 4000
   

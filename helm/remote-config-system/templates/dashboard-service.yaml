@@ -6,7 +6,7 @@ metadata:
     {{- include "remote-config-system.labels" . | nindent 4 }}
     app.kubernetes.io/component: dashboard
 spec:
-  type: {{ .Values.dashboard.service.type }}
+  type: {{ .Values.dashboard.service.type | default .Values.global.serviceType }}
   ports:
     - port: {{ .Values.dashboard.service.port }}
       targetPort: {{ .Values.dashboard.service.targetPort }}

@@ -6,7 +6,7 @@ metadata:
     {{- include "remote-config-system.labels" . | nindent 4 }}
     app.kubernetes.io/component: demo-app
 spec:
-  type: {{ .Values.demoApp.service.type }}
+  type: {{ .Values.demoApp.service.type | default .Values.global.serviceType }}
   ports:
     - port: {{ .Values.demoApp.service.port }}
       targetPort: {{ .Values.demoApp.service.targetPort }}
