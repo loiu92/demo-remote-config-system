@@ -1,17 +1,232 @@
 package testutil
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
 	"sync"
+	"testing"
 	"time"
 
+	"remote-config-system/internal/cache"
+	"remote-config-system/internal/db"
 	"remote-config-system/internal/models"
 	"remote-config-system/internal/sse"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/modules/redis"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
+
+// TestSuite provides a complete test environment with database and cache
+type TestSuite struct {
+	DB              *db.DB
+	Redis           *TestRedisClient
+	Repos           *db.Repositories
+	PostgresContainer *postgres.PostgresContainer
+	RedisContainer    *redis.RedisContainer
+	ctx             context.Context
+}
+
+// TestRedisClient wraps the cache client for testing
+type TestRedisClient struct {
+	Client *cache.RedisClient
+	Container *redis.RedisContainer
+}
+
+// SetupTestSuite creates a complete test environment with real database and cache
+func SetupTestSuite(t *testing.T) *TestSuite {
+	ctx := context.Background()
+
+	// Check if we're running in CI environment (GitHub Actions provides services)
+	isCI := os.Getenv("CI") == "true" || os.Getenv("GITHUB_ACTIONS") == "true"
+
+	var database *db.DB
+	var redisClient *cache.RedisClient
+	var postgresContainer *postgres.PostgresContainer
+	var redisContainer *redis.RedisContainer
+
+	if isCI {
+		// Use provided services in CI
+		dbConfig := &db.Config{
+			Host:     getEnv("DB_HOST", "localhost"),
+			Port:     getEnv("DB_PORT", "5432"),
+			User:     getEnv("DB_USER", "postgres"),
+			Password: getEnv("DB_PASSWORD", "postgres"),
+			DBName:   getEnv("DB_NAME", "test_remote_config"),
+			SSLMode:  "disable",
+		}
+
+		var err error
+		database, err = db.Connect(dbConfig)
+		require.NoError(t, err)
+
+		// Run migrations
+		migrationsDir := findMigrationsDir()
+		migrationRunner := db.NewMigrationRunner(database, migrationsDir)
+		err = migrationRunner.RunMigrations()
+		require.NoError(t, err)
+
+		// Connect to Redis
+		cacheConfig := &cache.Config{
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnv("REDIS_PORT", "6379"),
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       0,
+			TTL:      5 * time.Minute,
+			ShortTTL: 1 * time.Minute,
+			LongTTL:  10 * time.Minute,
+		}
+
+		redisClient, err = cache.NewRedisClient(cacheConfig)
+		require.NoError(t, err)
+	} else {
+		// Use testcontainers for local development
+		var err error
+
+		// Start PostgreSQL container
+		postgresContainer, err = postgres.RunContainer(ctx,
+			testcontainers.WithImage("postgres:15-alpine"),
+			postgres.WithDatabase("test_remote_config"),
+			postgres.WithUsername("test"),
+			postgres.WithPassword("test"),
+			testcontainers.WithWaitStrategy(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).
+					WithStartupTimeout(60*time.Second)),
+		)
+		require.NoError(t, err)
+
+		// Get PostgreSQL connection details
+		host, err := postgresContainer.Host(ctx)
+		require.NoError(t, err)
+		port, err := postgresContainer.MappedPort(ctx, "5432")
+		require.NoError(t, err)
+
+		// Connect to PostgreSQL
+		dbConfig := &db.Config{
+			Host:     host,
+			Port:     port.Port(),
+			User:     "test",
+			Password: "test",
+			DBName:   "test_remote_config",
+			SSLMode:  "disable",
+		}
+
+		database, err = db.Connect(dbConfig)
+		require.NoError(t, err)
+
+		// Run migrations
+		migrationsDir := findMigrationsDir()
+		migrationRunner := db.NewMigrationRunner(database, migrationsDir)
+		err = migrationRunner.RunMigrations()
+		require.NoError(t, err)
+
+		// Start Redis container
+		redisContainer, err = redis.RunContainer(ctx,
+			testcontainers.WithImage("redis:7-alpine"),
+			testcontainers.WithWaitStrategy(wait.ForLog("Ready to accept connections")),
+		)
+		require.NoError(t, err)
+
+		// Get Redis connection details
+		redisHost, err := redisContainer.Host(ctx)
+		require.NoError(t, err)
+		redisPort, err := redisContainer.MappedPort(ctx, "6379")
+		require.NoError(t, err)
+
+		// Connect to Redis
+		cacheConfig := &cache.Config{
+			Host:     redisHost,
+			Port:     redisPort.Port(),
+			Password: "",
+			DB:       0,
+			TTL:      5 * time.Minute,
+			ShortTTL: 1 * time.Minute,
+			LongTTL:  10 * time.Minute,
+		}
+
+		redisClient, err = cache.NewRedisClient(cacheConfig)
+		require.NoError(t, err)
+	}
+
+	// Create repositories
+	repos := db.NewRepositories(database)
+
+	return &TestSuite{
+		DB:                database,
+		Redis:             &TestRedisClient{Client: redisClient, Container: redisContainer},
+		Repos:             repos,
+		PostgresContainer: postgresContainer,
+		RedisContainer:    redisContainer,
+		ctx:               ctx,
+	}
+}
+
+// Cleanup cleans up the test environment
+func (ts *TestSuite) Cleanup(t *testing.T) {
+	if ts.DB != nil {
+		ts.DB.Close()
+	}
+	if ts.Redis != nil && ts.Redis.Client != nil {
+		ts.Redis.Client.Close()
+	}
+	if ts.PostgresContainer != nil {
+		if err := ts.PostgresContainer.Terminate(ts.ctx); err != nil {
+			log.Printf("Failed to terminate PostgreSQL container: %v", err)
+		}
+	}
+	if ts.RedisContainer != nil {
+		if err := ts.RedisContainer.Terminate(ts.ctx); err != nil {
+			log.Printf("Failed to terminate Redis container: %v", err)
+		}
+	}
+}
+
+// CreateTestOrganization creates a test organization in the database
+func (ts *TestSuite) CreateTestOrganization(t *testing.T, name, slug string) *models.Organization {
+	org := &models.Organization{
+		ID:   uuid.New(),
+		Name: name,
+		Slug: slug,
+	}
+	err := ts.Repos.Organizations.Create(org)
+	require.NoError(t, err)
+	return org
+}
+
+// CreateTestApplication creates a test application in the database
+func (ts *TestSuite) CreateTestApplication(t *testing.T, orgID uuid.UUID, name, slug, apiKey string) *models.Application {
+	app := &models.Application{
+		ID:     uuid.New(),
+		OrgID:  orgID,
+		Name:   name,
+		Slug:   slug,
+		APIKey: apiKey,
+	}
+	err := ts.Repos.Applications.Create(app)
+	require.NoError(t, err)
+	return app
+}
+
+// CreateTestEnvironment creates a test environment in the database
+func (ts *TestSuite) CreateTestEnvironment(t *testing.T, appID uuid.UUID, name, slug string) *models.Environment {
+	env := &models.Environment{
+		ID:    uuid.New(),
+		AppID: appID,
+		Name:  name,
+		Slug:  slug,
+	}
+	err := ts.Repos.Environments.Create(env)
+	require.NoError(t, err)
+	return env
+}
 
 // MockConfigService is a mock implementation of the ConfigService
 type MockConfigService struct {
@@ -323,4 +538,32 @@ func AssertConfigEqual(t interface{}, expected, actual *models.ConfigResponse) {
 		expected.Version != actual.Version {
 		panic(fmt.Sprintf("Config mismatch: expected %+v, got %+v", expected, actual))
 	}
+}
+
+// getEnv gets an environment variable with a fallback value
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+// findMigrationsDir finds the migrations directory relative to the current working directory
+func findMigrationsDir() string {
+	// Try different possible paths
+	possiblePaths := []string{
+		"../../migrations",  // From internal/testutil or internal/integration
+		"../migrations",     // From internal
+		"./migrations",      // From root
+		"migrations",        // From root (alternative)
+	}
+
+	for _, path := range possiblePaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	// Default fallback
+	return "../../migrations"
 }

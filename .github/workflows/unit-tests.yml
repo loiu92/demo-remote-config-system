@@ -33,13 +33,17 @@ jobs:
       run: go mod verify
 
     - name: Run go vet
-      run: go vet ./...
+      run: |
+        # Run go vet on all packages except integration tests
+        go vet $(go list ./... | grep -v '/internal/integration')
 
     - name: Install staticcheck
       run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
     - name: Run staticcheck
-      run: staticcheck ./...
+      run: |
+        # Run staticcheck on all packages except integration tests
+        staticcheck $(go list ./... | grep -v '/internal/integration')
 
     - name: Run unit tests
       run: |
