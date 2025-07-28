@@ -90,8 +90,6 @@ spec:
           volumeMounts:
             - name: postgresql-data
               mountPath: /var/lib/postgresql/data
-            - name: postgresql-init
-              mountPath: /docker-entrypoint-initdb.d
       volumes:
         - name: postgresql-data
           {{- if .Values.postgresql.persistence.enabled }}
@@ -100,9 +98,6 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-        - name: postgresql-init
-          configMap:
-            name: {{ include "remote-config-system.fullname" . }}-postgresql-init
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

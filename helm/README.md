@@ -7,8 +7,18 @@ This Helm chart deploys the Remote Configuration System with all its components 
 - **API Service**: Go-based REST API for configuration management (LoadBalancer on port 8080)
 - **Demo App**: React-based demo application with nginx (LoadBalancer on port 3000)
 - **Dashboard**: Admin dashboard and SSE demo pages with nginx (LoadBalancer on port 4000)
-- **PostgreSQL**: Primary database for configuration storage
+- **PostgreSQL**: Primary database for configuration storage (with automatic schema migrations)
 - **Redis**: Caching layer for improved performance
+
+## Database Migrations
+
+**Important**: Starting from version 0.2.0, database schema migrations are handled automatically by the API service at startup. The PostgreSQL container no longer includes initialization scripts - all schema management is done through the Go API's migration system.
+
+This ensures:
+- ✅ **Consistent schema**: All environments use the same migration system
+- ✅ **Version control**: Database changes are tracked in the API codebase
+- ✅ **Rollback safety**: Failed migrations prevent API startup
+- ✅ **Fresh deployments**: New installations automatically get the latest schema
 
 ## Prerequisites
 
