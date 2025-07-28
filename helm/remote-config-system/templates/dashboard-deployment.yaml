@@ -34,6 +34,11 @@ spec:
             - name: http
               containerPort: {{ .Values.dashboard.service.targetPort }}
               protocol: TCP
+          env:
+            - name: API_SERVICE_NAME
+              value: {{ .Values.dashboard.nginx.apiServiceName | default (printf "%s-api" (include "remote-config-system.fullname" .)) }}
+            - name: API_SERVICE_PORT
+              value: "{{ .Values.dashboard.nginx.apiServicePort | default .Values.api.service.port }}"
           {{- if .Values.dashboard.healthCheck.enabled }}
           livenessProbe:
             httpGet:

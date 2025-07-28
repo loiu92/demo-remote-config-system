@@ -34,6 +34,11 @@ spec:
             - name: http
               containerPort: {{ .Values.demoApp.service.targetPort }}
               protocol: TCP
+          env:
+            - name: API_SERVICE_NAME
+              value: {{ .Values.demoApp.nginx.apiServiceName | default (printf "%s-api" (include "remote-config-system.fullname" .)) }}
+            - name: API_SERVICE_PORT
+              value: "{{ .Values.demoApp.nginx.apiServicePort | default .Values.api.service.port }}"
           {{- if .Values.demoApp.healthCheck.enabled }}
           livenessProbe:
             httpGet:

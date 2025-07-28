@@ -69,6 +69,13 @@ demoApp:
     timeoutSeconds: 10
     failureThreshold: 5
 
+  # Nginx configuration for API proxy
+  nginx:
+    # These values are automatically set by the Helm chart
+    # but can be overridden if needed
+    apiServiceName: ""  # Defaults to {{ include "remote-config-system.fullname" . }}-api
+    apiServicePort: ""  # Defaults to {{ .Values.api.service.port }}
+
 # Dashboard Configuration
 dashboard:
   image:
@@ -98,6 +105,13 @@ dashboard:
     periodSeconds: 30
     timeoutSeconds: 10
     failureThreshold: 5
+
+  # Nginx configuration for API proxy
+  nginx:
+    # These values are automatically set by the Helm chart
+    # but can be overridden if needed
+    apiServiceName: ""  # Defaults to {{ include "remote-config-system.fullname" . }}-api
+    apiServicePort: ""  # Defaults to {{ .Values.api.service.port }}
 
 # PostgreSQL Configuration
 postgresql:

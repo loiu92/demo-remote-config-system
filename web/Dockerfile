@@ -8,8 +8,9 @@ RUN apk --no-cache add wget
 COPY static/ /usr/share/nginx/html/
 
 # Copy nginx configurations
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf.template /etc/nginx/conf.d/default.conf.template
 COPY nginx-main.conf /etc/nginx/nginx.conf
+COPY docker-entrypoint.sh /docker-entrypoint.sh
 
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \
@@ -18,7 +19,8 @@ RUN addgroup -g 1001 -S appgroup && \
 # Change ownership of nginx directories and create temp directories
 RUN chown -R appuser:appgroup /var/cache/nginx /var/run /var/log/nginx /usr/share/nginx/html && \
     mkdir -p /tmp/client_temp /tmp/proxy_temp_path /tmp/fastcgi_temp /tmp/uwsgi_temp /tmp/scgi_temp && \
-    chown -R appuser:appgroup /tmp/client_temp /tmp/proxy_temp_path /tmp/fastcgi_temp /tmp/uwsgi_temp /tmp/scgi_temp
+    chown -R appuser:appgroup /tmp/client_temp /tmp/proxy_temp_path /tmp/fastcgi_temp /tmp/uwsgi_temp /tmp/scgi_temp && \
+    chmod +x /docker-entrypoint.sh
 
 # Switch to non-root user
 USER appuser
@@ -30,5 +32,5 @@ EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start with custom entrypoint
+CMD ["/docker-entrypoint.sh"]
