@@ -15,13 +15,16 @@ spec:
     targetRevision: main
     path: helm/remote-config-system
     helm:
-      # You can override values here if needed
-      # valueFiles:
-      #   - values.yaml
-      # values: |
-      #   api:
-      #     image:
-      #       tag: "v1.0.0"
+      values: |
+        api:
+          image:
+            tag: "main-165217b"
+        demoApp:
+          image:
+            tag: "main-165217b"
+        dashboard:
+          image:
+            tag: "main-165217b"
   destination:
     server: https://kubernetes.default.svc
     namespace: remote-config-system
