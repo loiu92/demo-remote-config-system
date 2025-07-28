@@ -1,12 +1,14 @@
-{{- if and .Values.postgresql.enabled (not .Values.postgresql.useStatefulSet) }}
+{{- if .Values.postgresql.enabled }}
+{{- if .Values.postgresql.useStatefulSet }}
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ include "remote-config-system.fullname" . }}-postgresql
   labels:
     {{- include "remote-config-system.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgresql
 spec:
+  serviceName: {{ include "remote-config-system.fullname" . }}-postgresql
   replicas: {{ .Values.postgresql.replicaCount }}
   selector:
     matchLabels:
@@ -34,10 +36,13 @@ spec:
             - |
               # Create pgdata subdirectory if it doesn't exist
               mkdir -p /var/lib/postgresql/data/pgdata
+              # Remove lost+found if it exists
+              rm -rf /var/lib/postgresql/data/lost+found
               # Ensure correct ownership (postgres user/group = 999:999)
               chown -R 999:999 /var/lib/postgresql/data
               # Set correct permissions
               chmod 700 /var/lib/postgresql/data/pgdata
+              echo "PostgreSQL data directory initialized"
           volumeMounts:
             - name: postgresql-data
               mountPath: /var/lib/postgresql/data
@@ -63,13 +68,15 @@ spec:
               value: {{ .Values.postgresql.auth.password }}
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_INITDB_ARGS
+              value: "--auth-host=md5"
           {{- if .Values.postgresql.healthCheck.enabled }}
           livenessProbe:
             exec:
               command:
                 - /bin/sh
                 - -c
-                - pg_isready -U {{ .Values.postgresql.auth.username }}
+                - pg_isready -U {{ .Values.postgresql.auth.username }} -d {{ .Values.postgresql.auth.database }}
             initialDelaySeconds: {{ .Values.postgresql.healthCheck.initialDelaySeconds }}
             periodSeconds: {{ .Values.postgresql.healthCheck.periodSeconds }}
             timeoutSeconds: {{ .Values.postgresql.healthCheck.timeoutSeconds }}
@@ -79,11 +86,11 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - pg_isready -U {{ .Values.postgresql.auth.username }}
-            initialDelaySeconds: {{ .Values.postgresql.healthCheck.initialDelaySeconds }}
-            periodSeconds: {{ .Values.postgresql.healthCheck.periodSeconds }}
+                - pg_isready -U {{ .Values.postgresql.auth.username }} -d {{ .Values.postgresql.auth.database }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
             timeoutSeconds: {{ .Values.postgresql.healthCheck.timeoutSeconds }}
-            failureThreshold: {{ .Values.postgresql.healthCheck.failureThreshold }}
+            failureThreshold: 3
           {{- end }}
           resources:
             {{- toYaml .Values.postgresql.resources | nindent 12 }}
@@ -93,13 +100,6 @@ spec:
             - name: postgresql-init
               mountPath: /docker-entrypoint-initdb.d
       volumes:
-        - name: postgresql-data
-          {{- if .Values.postgresql.persistence.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ include "remote-config-system.fullname" . }}-postgresql-data
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
         - name: postgresql-init
           configMap:
             name: {{ include "remote-config-system.fullname" . }}-postgresql-init
@@ -115,4 +115,25 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+  {{- if .Values.postgresql.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: postgresql-data
+        labels:
+          {{- include "remote-config-system.labels" . | nindent 10 }}
+          app.kubernetes.io/component: postgresql
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size }}
+        {{- if .Values.postgresql.persistence.storageClass }}
+        storageClassName: {{ .Values.postgresql.persistence.storageClass }}
+        {{- end }}
+  {{- else }}
+  # If persistence is disabled, use emptyDir
+  # Note: This will cause data loss on pod restart
+  {{- end }}
+{{- end }}
 {{- end }}

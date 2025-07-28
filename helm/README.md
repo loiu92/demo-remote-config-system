@@ -4,12 +4,11 @@ This Helm chart deploys the Remote Configuration System with all its components 
 
 ## Components
 
-- **API Service**: Go-based REST API for configuration management
-- **Demo App**: React-based demo application (ShopFlow Lite)
-- **Dashboard**: Admin dashboard and SSE demo pages
+- **API Service**: Go-based REST API for configuration management (LoadBalancer on port 8080)
+- **Demo App**: React-based demo application with nginx (LoadBalancer on port 3000)
+- **Dashboard**: Admin dashboard and SSE demo pages with nginx (LoadBalancer on port 4000)
 - **PostgreSQL**: Primary database for configuration storage
 - **Redis**: Caching layer for improved performance
-- **Nginx**: Reverse proxy for routing and load balancing
 
 ## Prerequisites
 
@@ -129,18 +128,19 @@ postgresql:
 
 ## Accessing the Application
 
-After deployment, the application will be available through the Nginx service:
+After deployment, each service has its own LoadBalancer for direct access:
 
-- **LoadBalancer** (default): Get external IP with `kubectl get svc remote-config-system-nginx`
-- **Ingress**: Access via configured hostname
-- **Port Forward**: `kubectl port-forward svc/remote-config-system-nginx 8080:80`
+```bash
+# Get external IPs for all services
+kubectl get svc -l app.kubernetes.io/name=remote-config-system
+```
 
-### Application URLs
+### Service Access
 
-- **Demo App**: `http://your-domain/demo/`
-- **Dashboard**: `http://your-domain/dashboard`
-- **SSE Demo**: `http://your-domain/demo/sse`
-- **API**: `http://your-domain/api/`
+- **Demo App**: `http://<demo-app-external-ip>:3000/`
+- **Dashboard**: `http://<dashboard-external-ip>:4000/dashboard`
+- **SSE Demo**: `http://<dashboard-external-ip>:4000/demo/sse`
+- **API**: `http://<api-external-ip>:8080/api/`
 
 ## Monitoring and Troubleshooting
 

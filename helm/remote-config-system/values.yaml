@@ -16,7 +16,7 @@ api:
   replicaCount: 1
   
   service:
-    type: ClusterIP
+    type: LoadBalancer  # Direct access to API
     port: 8080
     targetPort: 8080
   
@@ -49,7 +49,7 @@ demoApp:
   replicaCount: 1
   
   service:
-    type: ClusterIP
+    type: LoadBalancer  # Direct access to demo app
     port: 3000
     targetPort: 3000
   
@@ -79,7 +79,7 @@ dashboard:
   replicaCount: 1
   
   service:
-    type: ClusterIP
+    type: LoadBalancer  # Direct access to dashboard
     port: 4000
     targetPort: 4000
   
@@ -102,11 +102,13 @@ dashboard:
 # PostgreSQL Configuration
 postgresql:
   enabled: true
+  # Use StatefulSet instead of Deployment for better data persistence
+  useStatefulSet: true
   image:
     repository: postgres
     tag: "15-alpine"
     pullPolicy: IfNotPresent
-  
+
   replicaCount: 1
   
   service:
@@ -123,6 +125,8 @@ postgresql:
     enabled: true
     size: 8Gi
     storageClass: ""
+    # Use subPath to avoid lost+found directory issues
+    subPath: "pgdata"
   
   resources:
     limits:
@@ -174,36 +178,15 @@ redis:
     timeoutSeconds: 10
     failureThreshold: 5
 
-# Nginx Reverse Proxy Configuration
-nginx:
-  enabled: true
-  image:
-    repository: nginx
-    tag: "alpine"
-    pullPolicy: IfNotPresent
-  
-  replicaCount: 1
-  
-  service:
-    type: LoadBalancer
-    port: 80
-    targetPort: 80
-  
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
+# Nginx reverse proxy removed - each service has direct LoadBalancer access
 
-# Ingress Configuration
+# Ingress Configuration (routes to API service)
 ingress:
   enabled: false
   className: ""
   annotations: {}
   hosts:
-    - host: remote-config.local
+    - host: remote-config-api.local
       paths:
         - path: /
           pathType: Prefix
@@ -219,7 +202,7 @@ serviceAccount:
 podSecurityContext:
   fsGroup: 1001
 
-# Security Context
+# Security Context (default for most services)
 securityContext:
   allowPrivilegeEscalation: false
   runAsNonRoot: true
@@ -228,6 +211,20 @@ securityContext:
   capabilities:
     drop:
     - ALL
+
+# PostgreSQL specific security context
+postgresqlSecurityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 999  # postgres user
+  runAsGroup: 999 # postgres group
+  capabilities:
+    drop:
+    - ALL
+
+# PostgreSQL Pod Security Context
+postgresqlPodSecurityContext:
+  fsGroup: 999
 
 # Node Selector
 nodeSelector: {}
