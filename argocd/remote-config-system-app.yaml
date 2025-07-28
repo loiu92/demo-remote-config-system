@@ -18,13 +18,13 @@ spec:
       values: |
         api:
           image:
-            tag: "main-f037c89"
+            tag: "main-2be25af"
         demoApp:
           image:
-            tag: "main-f037c89"
+            tag: "main-2be25af"
         dashboard:
           image:
-            tag: "main-f037c89"
+            tag: "main-2be25af"
   destination:
     server: https://kubernetes.default.svc
     namespace: remote-config-system
