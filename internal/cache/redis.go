@@ -246,8 +246,13 @@ func (r *RedisClient) InvalidatePattern(pattern string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	keys, err := r.client.Keys(ctx, pattern).Result()
-	if err != nil {
+	// Use SCAN instead of KEYS for better performance
+	var keys []string
+	iter := r.client.Scan(ctx, 0, pattern, 0).Iterator()
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	if err := iter.Err(); err != nil {
 		return fmt.Errorf("failed to get keys for pattern %s: %w", pattern, err)
 	}
 
@@ -336,13 +341,17 @@ func (r *RedisClient) GetCacheInfo() (map[string]interface{}, error) {
 
 	info := make(map[string]interface{})
 
-	// Get total keys count
-	keys, err := r.client.Keys(ctx, "config:*").Result()
-	if err != nil {
+	// Get total keys count using SCAN instead of KEYS for better performance
+	var totalKeys int64
+	iter := r.client.Scan(ctx, 0, "config:*", 0).Iterator()
+	for iter.Next(ctx) {
+		totalKeys++
+	}
+	if err := iter.Err(); err != nil {
 		return nil, fmt.Errorf("failed to get cache info: %w", err)
 	}
 
-	info["total_keys"] = len(keys)
+	info["total_keys"] = totalKeys
 	info["stats"] = r.GetStats()
 
 	// Get memory usage if available
